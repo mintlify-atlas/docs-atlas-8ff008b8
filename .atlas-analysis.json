@@ -1,0 +1,94 @@
+{
+  "projectType": "saas",
+  "projectName": "TextileFlow ERP",
+  "projectDescription": "Web-based ERP system for administrative and commercial management of textile micro-businesses",
+  "theme": "linden",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "features",
+              "getting-started"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/human-resources",
+              "features/inventory",
+              "features/attendance",
+              "features/payroll",
+              "features/reports"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/admin-guide",
+              "guides/employee-guide",
+              "guides/authentication"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/firebase-setup",
+              "configuration/authentication",
+              "configuration/schedules",
+              "configuration/deployment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Services",
+            "pages": [
+              "api/auth-service",
+              "api/attendance-service",
+              "api/schedule-service"
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              "api/database-schema",
+              "api/firestore-collections"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Role-based access control (Admin/Employee)",
+    "Complete HR management with CRUD operations",
+    "Dynamic inventory system with categories and attributes",
+    "Attendance tracking with schedule validation",
+    "Payroll management and payment tracking",
+    "Comprehensive reporting with PDF/Excel export",
+    "Real-time data synchronization with Firestore",
+    "Responsive design for desktop, tablet, and mobile"
+  ],
+  "publicApiSurface": [
+    "authService.login(email, password)",
+    "authService.register(userData)",
+    "authService.logout()",
+    "attendanceService.markAttendance(userId, type)",
+    "attendanceService.getTodayAttendances()",
+    "attendanceService.getUserAttendances(userId, startDate, endDate)",
+    "scheduleService.getScheduleForDate(date)",
+    "scheduleService.createSchedule(scheduleData)",
+    "statsService.getDailyStats(userId, date)"
+  ]
+}
