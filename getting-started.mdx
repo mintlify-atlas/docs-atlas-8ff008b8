@@ -1,0 +1,716 @@
+---
+title: 'Getting Started'
+description: 'Quick setup guide to get TextileFlow ERP running in minutes'
+icon: 'rocket'
+---
+
+This guide will walk you through setting up TextileFlow ERP from installation to your first login and basic operations.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** v14 or higher
+- **npm** or **yarn** package manager  
+- **Firebase CLI** for local development
+- A modern web browser (Chrome, Firefox, Safari, or Edge)
+- Access to Firebase Console for project configuration
+
+<Note>
+  TextileFlow ERP is a web-based application that runs entirely in the browser, backed by Firebase services for authentication and data storage.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the Repository">
+    Download the TextileFlow ERP source code:
+    
+    ```bash
+    git clone https://github.com/Danuord/SISE_proyectoERMTextil.git
+    cd SISE_proyectoERMTextil
+    ```
+  </Step>
+
+  <Step title="Install Firebase CLI">
+    If you don't have Firebase CLI installed globally:
+    
+    ```bash
+    npm install -g firebase-tools
+    ```
+    
+    Verify installation:
+    
+    ```bash
+    firebase --version
+    ```
+  </Step>
+
+  <Step title="Login to Firebase">
+    Authenticate with your Google account:
+    
+    ```bash
+    firebase login
+    ```
+    
+    This will open a browser window for authentication.
+  </Step>
+
+  <Step title="Initialize Firebase Project">
+    Set up Firebase services for your project:
+    
+    ```bash
+    firebase init
+    ```
+    
+    Select the following services:
+    - **Authentication**: User authentication and management
+    - **Firestore Database**: NoSQL database for application data
+    - **Storage**: File storage for user uploads
+    - **Hosting**: Web hosting for the application
+    
+    When prompted:
+    - Choose "Use an existing project" or "Create a new project"
+    - Set `public` as the public directory
+    - Configure as a single-page app: **No**
+    - Don't overwrite existing files
+  </Step>
+
+  <Step title="Configure Firebase Credentials">
+    Create or update the Firebase configuration file at `public/src/config/firebase.js`:
+    
+    ```javascript public/src/config/firebase.js
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
+    import { getAuth, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
+    import { getFirestore, connectFirestoreEmulator } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
+    import { getStorage } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-storage.js';
+    
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "your-project.firebaseapp.com",
+      projectId: "your-project",
+      storageBucket: "your-project.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
+    };
+    
+    const app = initializeApp(firebaseConfig);
+    
+    export const auth = getAuth(app);
+    export const db = getFirestore(app);
+    export const storage = getStorage(app);
+    
+    // Emulator configuration for local development
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      console.log("🔧 Usando Firebase Emulators");
+      
+      try {
+        connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+        console.log("✓ Auth Emulator conectado");
+      } catch (e) {
+        console.warn("Auth Emulator ya está conectado");
+      }
+      
+      try {
+        connectFirestoreEmulator(db, 'localhost', 8080);
+        console.log("✓ Firestore Emulator conectado");
+      } catch (e) {
+        console.warn("Firestore Emulator ya está conectado");
+      }
+    }
+    
+    export default app;
+    ```
+    
+    <Note>
+      Get your Firebase credentials from the Firebase Console under Project Settings > General > Your apps > Web app.
+    </Note>
+  </Step>
+
+  <Step title="Configure Firestore Security Rules">
+    Update `firestore.rules` to set appropriate security rules:
+    
+    ```javascript firestore.rules
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        // Allow authenticated users to read/write their own data
+        match /usuario/{userId} {
+          allow read, write: if request.auth != null;
+        }
+        
+        // Admin-only collections
+        match /{document=**} {
+          allow read, write: if request.auth != null;
+        }
+      }
+    }
+    ```
+    
+    <Warning>
+      The rules above are permissive for development. Implement stricter role-based rules for production environments.
+    </Warning>
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch Firebase Emulators for local development:
+    
+    ```bash
+    firebase emulators:start
+    ```
+    
+    This will start:
+    - **Hosting**: http://localhost:5000
+    - **Firestore**: http://localhost:8080
+    - **Authentication**: http://localhost:9099
+    - **Emulator UI**: http://localhost:4000
+    
+    <Note>
+      The Emulator UI at localhost:4000 provides a visual interface to view and manage your local Firebase data.
+    </Note>
+    
+    Alternatively, use a simple HTTP server:
+    
+    ```bash
+    # Python 3
+    python -m http.server 8000
+    
+    # Node.js (with http-server)
+    npx http-server -p 8000
+    ```
+  </Step>
+</Steps>
+
+## First Login
+
+<Steps>
+  <Step title="Access the Application">
+    Open your browser and navigate to:
+    
+    ```
+    http://localhost:5000
+    ```
+    
+    You'll be automatically redirected to the login page at `/pages/login.html`.
+  </Step>
+
+  <Step title="Create Admin User">
+    Since this is your first time, you need to create an admin user. You have two options:
+    
+    **Option A: Using Firebase Console**
+    
+    1. Go to Firebase Console > Authentication > Users
+    2. Click "Add user"
+    3. Enter email and password
+    4. Copy the generated UID
+    5. Go to Firestore Database
+    6. Create a new document in the `usuario` collection:
+    
+    ```javascript
+    {
+      uid: "[PASTE_UID_HERE]",
+      email: "admin@example.com",
+      nombre: "Admin",
+      apellido: "User",
+      displayName: "Admin User",
+      rol: "admin",
+      tipoDocumento: "CC",
+      numeroDocumento: "12345678",
+      telefono: "+51999999999",
+      direccion: "Lima, Peru",
+      estado: "activo",
+      fechaCreacion: [Current Timestamp]
+    }
+    ```
+    
+    **Option B: Using Emulator UI** (for local development)
+    
+    1. Go to http://localhost:4000
+    2. Navigate to Authentication tab
+    3. Add a new user with email/password
+    4. Navigate to Firestore tab
+    5. Create the `usuario` document as shown above
+  </Step>
+
+  <Step title="Login to the System">
+    Return to the login page and enter your credentials:
+    
+    ```
+    Email: admin@example.com
+    Password: [your_password]
+    ```
+    
+    Click "Iniciar Sesión" (Login).
+    
+    <Note>
+      The system validates credentials against Firebase Authentication and retrieves user data from Firestore to determine your role and permissions.
+    </Note>
+  </Step>
+
+  <Step title="Verify Successful Login">
+    Upon successful authentication:
+    
+    1. Session data is saved to localStorage:
+    
+    ```javascript
+    {
+      uid: "user_uid",
+      email: "admin@example.com",
+      nombre: "Admin",
+      apellido: "User",
+      displayName: "Admin User",
+      rol: "admin",
+      timestamp: 1234567890
+    }
+    ```
+    
+    2. You'll be redirected to the admin dashboard at `/pages/admin/dashboard.html`
+    3. You'll see the main dashboard with KPIs and navigation sidebar
+  </Step>
+</Steps>
+
+## Exploring the Dashboard
+
+After logging in as admin, you'll see the main dashboard:
+
+### Dashboard Overview
+
+The admin dashboard displays key metrics:
+
+<CardGroup cols={2}>
+  <Card title="Empleados Activos" icon="users">
+    Total count of active employees in the system
+  </Card>
+  
+  <Card title="Asistencia del Mes" icon="calendar-check">
+    Monthly attendance percentage across all employees
+  </Card>
+  
+  <Card title="Tardanzas del Mes" icon="clock">
+    Number of late arrivals recorded this month
+  </Card>
+  
+  <Card title="Inventario" icon="box">
+    Current inventory stock levels
+  </Card>
+</CardGroup>
+
+### Navigation Sidebar
+
+The sidebar provides access to all modules:
+
+- **Dashboard**: Overview and analytics
+- **RRHH**: Human resources and employee management
+- **Inventario**: Inventory and product management  
+- **Asistencias**: Attendance tracking and reports
+- **Pagos**: Payroll and payment management
+- **Reportes**: Reports and analytics
+- **Configuración**: System configuration
+- **Perfil**: User profile settings
+
+## Creating Your First Employee
+
+<Steps>
+  <Step title="Navigate to RRHH Module">
+    Click on "RRHH" (Human Resources) in the sidebar navigation.
+    
+    You'll see an empty employee table with search and filter options.
+  </Step>
+
+  <Step title="Open Employee Form">
+    Click the "Agregar Usuario" (Add User) button.
+    
+    A modal dialog will appear with the employee registration form.
+  </Step>
+
+  <Step title="Fill in Employee Details">
+    Complete the form with the following information:
+    
+    ```
+    Tipo de Documento: CC (Cédula de Ciudadanía)
+    Número de Documento: 87654321
+    Nombre: Juan
+    Apellido: Pérez
+    Email: juan.perez@example.com
+    Teléfono: +51987654321
+    Dirección: Av. Principal 123, Lima
+    Rol: Empleado
+    Contraseña: employee123
+    ```
+    
+    <Note>
+      The system automatically validates that the document number and email are unique before allowing creation.
+    </Note>
+  </Step>
+
+  <Step title="Save the Employee">
+    Click "Guardar" (Save) to create the employee record.
+    
+    Behind the scenes, the system:
+    
+    1. Validates document and email uniqueness:
+    
+    ```javascript
+    async function checkDocumentExists(documento, excludeUid = null) {
+      const q = query(collection(db, "usuario"), 
+                     where("documento", "==", documento));
+      const querySnapshot = await getDocs(q);
+      return !querySnapshot.empty;
+    }
+    ```
+    
+    2. Creates a Firebase Authentication account:
+    
+    ```javascript
+    const userCredential = await createUserWithEmailAndPassword(
+      auth, email, password
+    );
+    ```
+    
+    3. Saves employee data to Firestore:
+    
+    ```javascript
+    await setDoc(doc(db, "usuario", userCredential.user.uid), {
+      uid: userCredential.user.uid,
+      email: email,
+      nombre: "Juan",
+      apellido: "Pérez",
+      displayName: "Juan Pérez",
+      rol: "Empleado",
+      estado: "activo",
+      // ... other fields
+    });
+    ```
+  </Step>
+
+  <Step title="Verify Employee Creation">
+    The new employee will immediately appear in the table thanks to Firestore's real-time listeners:
+    
+    ```javascript
+    onSnapshot(collection(db, "usuario"), (snapshot) => {
+      snapshot.forEach(docSnap => {
+        const employee = docSnap.data();
+        // Update UI with employee data
+      });
+    });
+    ```
+    
+    You'll see the employee row with all their information displayed in the table.
+  </Step>
+</Steps>
+
+## Recording Your First Attendance
+
+<Steps>
+  <Step title="Navigate to Asistencias Module">
+    Click on "Asistencias" (Attendance) in the sidebar.
+    
+    You'll see the attendance tracking interface.
+  </Step>
+
+  <Step title="Configure Default Schedule">
+    Before recording attendance, set up the default schedule:
+    
+    1. The system loads the default schedule from Firestore:
+    
+    ```javascript
+    let defaultSchedule = { 
+      horaEntrada: "08:00", 
+      horaSalida: "17:00", 
+      tolerancia: 15 // minutes tolerance for tardiness
+    };
+    
+    async function loadDefaultSchedule() {
+      const docRef = doc(db, "configuracion", "horario_default");
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        defaultSchedule = docSnap.data();
+      } else {
+        await setDoc(docRef, defaultSchedule);
+      }
+    }
+    ```
+    
+    2. The default 8:00 AM - 5:00 PM schedule with 15-minute tolerance is used if not configured.
+  </Step>
+
+  <Step title="Mark Attendance Entry">
+    Select an employee from the dropdown and click "Marcar Entrada" (Mark Entry).
+    
+    The system:
+    
+    1. Gets the current Lima, Peru time:
+    
+    ```javascript
+    function getCurrentTimeLima() {
+      const now = new Date();
+      const limaTime = new Date(now.toLocaleString('en-US', { 
+        timeZone: 'America/Lima' 
+      }));
+      const hours = limaTime.getHours().toString().padStart(2, '0');
+      const minutes = limaTime.getMinutes().toString().padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+    ```
+    
+    2. Records the entry with timestamp:
+    
+    ```javascript
+    await setDoc(doc(db, "asistencia", attendanceId), {
+      userId: employeeId,
+      fecha: getTodayLima(),
+      horaEntrada: getCurrentTimeLima(),
+      estado: "presente",
+      timestamp: serverTimestamp()
+    });
+    ```
+  </Step>
+
+  <Step title="Mark Attendance Exit">
+    Later in the day, mark the exit time by clicking "Marcar Salida" (Mark Exit).
+    
+    The system updates the existing attendance record:
+    
+    ```javascript
+    await updateDoc(doc(db, "asistencia", attendanceId), {
+      horaSalida: getCurrentTimeLima(),
+      timestamp: serverTimestamp()
+    });
+    ```
+  </Step>
+
+  <Step title="View Attendance History">
+    The attendance table shows all recorded entries with:
+    
+    - Employee name
+    - Date
+    - Entry time
+    - Exit time  
+    - Status (presente/ausente/permiso)
+    - Tardiness minutes (if applicable)
+    
+    Tardiness is calculated by comparing entry time against the configured schedule.
+  </Step>
+</Steps>
+
+## Understanding the File Structure
+
+TextileFlow follows a modular architecture:
+
+```
+public/
+├── pages/
+│   ├── login.html          # Login page
+│   ├── admin/              # Admin pages
+│   │   ├── dashboard.html  # Main dashboard
+│   │   ├── rrhh.html       # HR management
+│   │   ├── inventario.html # Inventory
+│   │   ├── asistencia.html # Attendance
+│   │   └── ...
+│   └── employee/           # Employee pages
+│       ├── dashboard.html  # Employee dashboard
+│       └── ...
+├── js/                     # JavaScript modules
+│   ├── rrhh.js            # HR logic
+│   ├── inventario.js      # Inventory logic
+│   ├── asistencias.js     # Attendance logic
+│   └── ...
+├── src/                    # Core services
+│   ├── auth/              # Authentication
+│   │   ├── login/
+│   │   ├── services/
+│   │   └── guards/
+│   ├── config/            # Configuration
+│   │   └── firebase.js    # Firebase setup
+│   └── utils/             # Utilities
+└── css/                   # Stylesheets
+    ├── auth/
+    ├── common/
+    └── modules/
+```
+
+## Testing Employee Login
+
+<Steps>
+  <Step title="Logout from Admin">
+    Click on "Cerrar Sesión" (Logout) in the sidebar.
+    
+    This clears the session and redirects to the login page:
+    
+    ```javascript
+    function logout() {
+      localStorage.removeItem('textileflow_session');
+      window.location.href = './login.html';
+    }
+    ```
+  </Step>
+
+  <Step title="Login as Employee">
+    Use the employee credentials you created:
+    
+    ```
+    Email: juan.perez@example.com
+    Password: employee123
+    ```
+  </Step>
+
+  <Step title="Explore Employee Dashboard">
+    Notice the different interface:
+    
+    - Limited navigation options
+    - Access only to Asistencias (Attendance) and Perfil (Profile)
+    - Cannot access RRHH, Inventario, or Pagos modules
+    - Employee-specific dashboard with personal attendance stats
+    
+    This demonstrates the role-based access control (RBAC) in action.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Inventory" icon="box" href="/features#inventory-management">
+    Set up categories, attributes, and articles for your textile products
+  </Card>
+  
+  <Card title="Generate Reports" icon="chart-line" href="/features#reports-analytics">
+    Create attendance, payroll, and inventory reports with exports
+  </Card>
+  
+  <Card title="Customize Settings" icon="gear" href="/features#attendance-system">
+    Configure schedules, tolerances, and system preferences
+  </Card>
+  
+  <Card title="Explore API" icon="code">
+    Integrate with external systems using Firebase APIs
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Blank Page After Login
+
+**Problem**: Page is blank after successful login.
+
+**Solution**:
+1. Open browser console (F12)
+2. Check for Firebase initialization errors
+3. Verify `firebase.js` has correct credentials
+4. Ensure session is saved to localStorage:
+
+```javascript
+const session = localStorage.getItem('textileflow_session');
+console.log('Session:', session);
+```
+
+### Cannot Create Employees
+
+**Problem**: Employee creation fails silently.
+
+**Solution**:
+1. Check Firestore security rules allow writes
+2. Verify you have "admin" role in your session
+3. Check console for validation errors
+4. Ensure Firebase Authentication is enabled
+
+### Tables Not Updating
+
+**Problem**: Data changes don't appear in tables.
+
+**Solution**:
+1. Verify Firestore listeners are active:
+
+```javascript
+onSnapshot(collection(db, "usuario"), (snapshot) => {
+  console.log('Listener triggered:', snapshot.size, 'documents');
+});
+```
+
+2. Check browser console for errors
+3. Refresh the page (F5) to force sync
+
+### Emulator Connection Issues
+
+**Problem**: Cannot connect to Firebase Emulators.
+
+**Solution**:
+1. Ensure emulators are running: `firebase emulators:start`
+2. Check that ports are not in use (9099, 8080, 5000)
+3. Verify emulator configuration in `firebase.json`:
+
+```json firebase.json
+{
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "hosting": { "port": 5000 },
+    "ui": { "enabled": true, "port": 4000 }
+  }
+}
+```
+
+<Warning>
+  If you encounter persistent issues, check the Firebase Console for service status and quota limits.
+</Warning>
+
+## Production Deployment
+
+When ready to deploy to production:
+
+<Steps>
+  <Step title="Build for Production">
+    Ensure all configuration points to production Firebase project:
+    
+    ```bash
+    firebase use production
+    ```
+  </Step>
+
+  <Step title="Update Security Rules">
+    Implement strict Firestore security rules for production:
+    
+    ```javascript
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /usuario/{userId} {
+          allow read: if request.auth != null;
+          allow write: if request.auth.uid == userId || 
+                         get(/databases/$(database)/documents/usuario/$(request.auth.uid)).data.rol == 'admin';
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Deploy to Firebase Hosting">
+    ```bash
+    firebase deploy
+    ```
+    
+    This deploys:
+    - Hosting files
+    - Firestore rules and indexes
+    - Storage rules
+  </Step>
+
+  <Step title="Verify Deployment">
+    Access your production URL:
+    
+    ```
+    https://your-project.web.app
+    ```
+  </Step>
+</Steps>
+
+## Support & Resources
+
+- **GitHub Repository**: [TextileFlow ERP](https://github.com/Danuord/SISE_proyectoERMTextil)
+- **Firebase Documentation**: [firebase.google.com/docs](https://firebase.google.com/docs)
+- **Issues & Bugs**: [GitHub Issues](https://github.com/Danuord/SISE_proyectoERMTextil/issues)
+
+<Note>
+  Congratulations! You've successfully set up TextileFlow ERP and performed your first operations. Explore the other modules to unlock the full potential of the system.
+</Note>

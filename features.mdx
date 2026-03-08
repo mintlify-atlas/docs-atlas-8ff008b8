@@ -1,0 +1,477 @@
+---
+title: 'Key Features'
+description: 'Comprehensive overview of TextileFlow ERP capabilities and modules'
+icon: 'sparkles'
+---
+
+TextileFlow ERP is a comprehensive web-based system designed to centralize and automate administrative and commercial processes for textile microenterprises. Built on Firebase and modern web technologies, it provides a scalable, cloud-based solution accessible from any device.
+
+## Core Features
+
+<CardGroup cols={2}>
+  <Card title="Secure Authentication" icon="lock" iconType="duotone">
+    Firebase Authentication with email/password login, role-based access control (Admin/Employee), session management, and route protection via AuthGuard.
+  </Card>
+  
+  <Card title="Human Resources Management" icon="users" iconType="duotone">
+    Complete CRUD operations for employees with document management, real-time search and filtering, unique validation for documents and emails, and PDF/Excel export capabilities.
+  </Card>
+  
+  <Card title="Inventory Control" icon="box" iconType="duotone">
+    Dynamic article and category management, flexible attribute system, real-time stock control with Firestore listeners, and modular interface with modal dialogs.
+  </Card>
+  
+  <Card title="Attendance Tracking" icon="clock" iconType="duotone">
+    Entry/exit registration with automatic timestamps, configurable schedules (default and custom), attendance reports with tardiness and absence tracking, and daily/monthly statistics.
+  </Card>
+  
+  <Card title="Payroll Management" icon="dollar-sign" iconType="duotone">
+    Salary calculation and payment recording, monthly payroll reports, payment voucher generation in PDF format, and advanced filtering and search capabilities.
+  </Card>
+  
+  <Card title="Reports & Analytics" icon="chart-line" iconType="duotone">
+    Multiple report types (attendance, tardiness, absences), dynamic Chart.js visualizations, date and employee filtering, and export to PDF, Excel, and print.
+  </Card>
+  
+  <Card title="Specialized Dashboards" icon="gauge" iconType="duotone">
+    Admin dashboard with full system access and KPIs, employee dashboard with limited access to attendance and profile, real-time user information, and responsive navigation.
+  </Card>
+  
+  <Card title="Responsive Design" icon="mobile" iconType="duotone">
+    Adaptive layout for desktop, tablet, and mobile, horizontal scrolling tables for wide data, hamburger menu for mobile devices, and consistent, accessible UI components.
+  </Card>
+</CardGroup>
+
+## Authentication & Security
+
+### Firebase Authentication Integration
+
+TextileFlow uses Firebase Authentication v10.13.1 for secure user management:
+
+```javascript
+import { 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail 
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+
+const userCredential = await signInWithEmailAndPassword(auth, email, password);
+const user = userCredential.user;
+```
+
+<Note>
+  The system validates user credentials against Firebase Auth and retrieves user data from Firestore to determine role-based access.
+</Note>
+
+### Role-Based Access Control (RBAC)
+
+Two primary roles with distinct permissions:
+
+- **Admin**: Full system access including RRHH, inventory, attendance, payroll, reports, and configuration
+- **Empleado** (Employee): Limited access to personal attendance and profile management
+
+Session data is stored in localStorage with the following structure:
+
+```javascript
+{
+  uid: string,
+  email: string,
+  nombre: string,
+  apellido: string,
+  displayName: string,
+  rol: "admin" | "Empleado",
+  timestamp: number
+}
+```
+
+### Route Protection
+
+The AuthGuard component protects routes based on user authentication and role:
+
+```javascript
+const session = localStorage.getItem('textileflow_session');
+if (session) {
+  const sessionData = JSON.parse(session);
+  if (sessionData.rol === 'admin' || sessionData.rol === 'Administrador') {
+    window.location.replace('./admin/dashboard.html');
+  } else {
+    window.location.replace('./employee/dashboard.html');
+  }
+}
+```
+
+## Human Resources Module
+
+### Employee Management
+
+Complete CRUD functionality for employee administration:
+
+**Employee Data Structure:**
+
+```javascript
+{
+  uid: string,
+  tipoDocumento: "CC" | "CE" | "NIT" | "PA",
+  numeroDocumento: string,
+  nombre: string,
+  apellido: string,
+  email: string,  // Must be unique
+  telefono: string,
+  direccion: string,
+  rol: "admin" | "Empleado",
+  estado: "activo" | "inactivo",
+  fechaCreacion: timestamp,
+  displayName: string
+}
+```
+
+### Advanced Search & Filtering
+
+Real-time search implementation with multiple filters:
+
+```javascript
+const filteredUsers = allUsers.filter(cliente => {
+  // Search by document, name, or email
+  const matchesSearch = 
+    cliente.documento?.toLowerCase().includes(searchTerm) ||
+    `${cliente.nombre} ${cliente.apellido}`.toLowerCase().includes(searchTerm) ||
+    cliente.email?.toLowerCase().includes(searchTerm);
+  
+  // Filter by document type, role, and status
+  const matchesTipoDoc = !filterTipoDoc || cliente.tipoDocumento === filterTipoDoc;
+  const matchesRol = !filterRol || cliente.rol === filterRol;
+  const matchesEstado = !filterEstado || cliente.estado === filterEstado;
+  
+  return matchesSearch && matchesTipoDoc && matchesRol && matchesEstado;
+});
+```
+
+### Data Validation
+
+Uniqueness validation for documents and emails:
+
+```javascript
+async function checkDocumentExists(documento, excludeUid = null) {
+  const q = query(collection(db, "usuario"), where("documento", "==", documento));
+  const querySnapshot = await getDocs(q);
+  
+  if (excludeUid) {
+    return querySnapshot.docs.some(doc => doc.id !== excludeUid);
+  }
+  
+  return !querySnapshot.empty;
+}
+```
+
+<Warning>
+  Always validate document and email uniqueness before creating or updating employee records to prevent data conflicts.
+</Warning>
+
+## Inventory Management
+
+### Dynamic Category & Attribute System
+
+Flexible inventory structure supporting categories, attributes, and values:
+
+**Article Structure:**
+
+```javascript
+{
+  id: string,
+  nombre: string,
+  descripcion: string,
+  categoriaId: string,
+  stock: number,
+  precio: number,
+  atributos: {
+    "Color": "Rojo",
+    "Talla": "M"
+  },
+  fechaCreacion: timestamp
+}
+```
+
+### Real-Time Updates
+
+Firestore listeners automatically sync inventory data:
+
+```javascript
+onSnapshot(collection(db, "atributo"), (snapshot) => {
+  snapshot.forEach((doc) => {
+    const data = doc.data();
+    // Update UI with latest attribute data
+  });
+});
+```
+
+### Loading Attributes for Articles
+
+```javascript
+async function cargarAtributosEnSelect() {
+  selectAtributos.innerHTML = `<option value="">Seleccione un atributo</option>`;
+  
+  const querySnapshot = await getDocs(collection(db, "atributo"));
+  querySnapshot.forEach((doc) => {
+    const data = doc.data();
+    const option = document.createElement("option");
+    option.value = data.id_atributo;
+    option.textContent = data.nombre_atributo;
+    selectAtributos.appendChild(option);
+  });
+}
+```
+
+## Attendance System
+
+### Time Zone Configuration
+
+All attendance records use Lima, Peru timezone:
+
+```javascript
+function getTodayLima() {
+  const now = new Date();
+  const limaTime = new Date(now.toLocaleString('en-US', { 
+    timeZone: 'America/Lima' 
+  }));
+  return limaTime.toISOString().split('T')[0];
+}
+
+function getCurrentTimeLima() {
+  const now = new Date();
+  const limaTime = new Date(now.toLocaleString('en-US', { 
+    timeZone: 'America/Lima' 
+  }));
+  const hours = limaTime.getHours().toString().padStart(2, '0');
+  const minutes = limaTime.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+```
+
+### Configurable Schedules
+
+Default and custom schedules per employee:
+
+```javascript
+let defaultSchedule = { 
+  horaEntrada: "08:00", 
+  horaSalida: "17:00", 
+  tolerancia: 15 // minutes
+};
+
+async function loadDefaultSchedule() {
+  const docRef = doc(db, "configuracion", "horario_default");
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    defaultSchedule = docSnap.data();
+  } else {
+    await setDoc(docRef, defaultSchedule);
+  }
+}
+```
+
+### Attendance Data Structure
+
+```javascript
+{
+  id: string,
+  userId: string,
+  fecha: "YYYY-MM-DD",
+  horaEntrada: "HH:MM",
+  horaSalida: "HH:MM",
+  estado: "presente" | "ausente" | "permiso",
+  tardanza: number, // minutes
+  timestamp: timestamp
+}
+```
+
+## Dashboard & Analytics
+
+### Admin Dashboard KPIs
+
+Real-time key performance indicators:
+
+```html
+<div class="kpi-card">
+  <div class="kpi-icon">
+    <i class="fas fa-users"></i>
+  </div>
+  <div class="kpi-value" id="kpiEmpleados">-</div>
+  <div class="kpi-label">Empleados Activos</div>
+  <div class="kpi-trend up">
+    <i class="fas fa-arrow-up"></i>
+    <span>+12%</span>
+  </div>
+</div>
+```
+
+KPIs tracked:
+- Active employees count
+- Monthly attendance percentage
+- Monthly tardiness count
+- Inventory stock levels
+
+### Chart.js Integration
+
+Dynamic visualizations using Chart.js v4.4.0:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+```
+
+## Export Capabilities
+
+### PDF Export
+
+Generate PDF reports using jsPDF:
+
+- Employee lists
+- Attendance reports
+- Payment vouchers
+- Monthly summaries
+
+### Excel Export
+
+Export data to Excel using SheetJS:
+
+- Employee database
+- Inventory listings
+- Attendance records
+- Payroll data
+
+<Note>
+  All exports maintain data integrity and include proper formatting for professional reporting.
+</Note>
+
+## Firebase Configuration
+
+### Project Setup
+
+```javascript
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "textileflow-test.firebaseapp.com",
+  projectId: "textileflow-test",
+  storageBucket: "textileflow-test.firebasestorage.app",
+  messagingSenderId: "YOUR_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+```
+
+### Emulator Support
+
+Local development with Firebase Emulators:
+
+```javascript
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, 'localhost', 8080);
+}
+```
+
+**Emulator Ports:**
+- Auth: 9099
+- Firestore: 8080  
+- Hosting: 5000
+- UI: 4000
+
+## Technology Stack
+
+| Technology | Version | Purpose |
+|------------|---------|----------|
+| Firebase | 10.13.1 | Backend as a Service (BaaS) |
+| JavaScript | ES6+ | Application logic |
+| HTML5 | - | Semantic structure |
+| CSS3 | - | Responsive design |
+| Chart.js | 4.4.0 | Data visualizations |
+| Font Awesome | 6.0.0+ | Iconography |
+| jsPDF | 2.5.1+ | PDF generation |
+| SheetJS | - | Excel export |
+
+## Performance Optimizations
+
+<CardGroup cols={2}>
+  <Card title="Real-Time Sync" icon="arrows-rotate">
+    Firestore `onSnapshot` listeners provide automatic data synchronization without manual refreshes.
+  </Card>
+  
+  <Card title="Session Caching" icon="database">
+    LocalStorage caching reduces API calls by persisting user session data locally.
+  </Card>
+  
+  <Card title="Lazy Loading" icon="spinner">
+    Modular architecture loads only required scripts per page, reducing initial load time.
+  </Card>
+  
+  <Card title="Query Optimization" icon="bolt">
+    Firestore queries use indexes and filters to minimize data transfer and improve response times.
+  </Card>
+</CardGroup>
+
+## Security Features
+
+### Firestore Security Rules
+
+Database access is controlled through Firestore security rules:
+
+- Authenticated users only
+- Role-based data access
+- Document ownership validation
+- Write operation restrictions
+
+### Input Validation
+
+- Email format validation using regex
+- Password minimum length enforcement (6 characters)
+- Document uniqueness checks before creation
+- Form data sanitization
+
+### Session Management
+
+```javascript
+// Session protection on every page
+const session = localStorage.getItem('textileflow_session');
+if (!session) {
+  window.location.replace('./login.html');
+}
+```
+
+<Warning>
+  Always implement proper authentication checks before accessing protected resources. The system includes `sessionProtection.js` on all secured pages.
+</Warning>
+
+## Responsive Design
+
+TextileFlow is fully responsive with:
+
+- **Mobile-first approach**: Optimized for small screens
+- **Breakpoints**: Tablet (768px), Desktop (1024px)
+- **Touch-friendly**: Large tap targets for mobile users
+- **Adaptive tables**: Horizontal scroll for data-heavy tables
+- **Hamburger menu**: Collapsible navigation on mobile
+
+## Future Enhancements
+
+<CardGroup cols={2}>
+  <Card title="Sales Module" icon="cart-shopping">
+    Order management, customer tracking, and sales analytics
+  </Card>
+  
+  <Card title="Production Module" icon="industry">
+    Production orders, workflow tracking, and capacity planning
+  </Card>
+  
+  <Card title="Offline Mode" icon="wifi-slash">
+    Service Workers for offline data access and synchronization
+  </Card>
+  
+  <Card title="Mobile App" icon="mobile-screen">
+    Native mobile application using React Native or Flutter
+  </Card>
+</CardGroup>

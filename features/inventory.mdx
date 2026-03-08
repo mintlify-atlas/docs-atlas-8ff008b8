@@ -1,0 +1,576 @@
+---
+title: 'Inventory Management'
+description: 'Product catalog, stock control, and category management system'
+icon: 'boxes-stacked'
+---
+
+## Overview
+
+The Inventory module provides comprehensive product and stock management for TextileFlow ERP, with support for product variants (attributes and values), category organization, and real-time stock tracking.
+
+<Note>
+  The inventory system uses Firebase Firestore with optimized parallel queries for fast performance even with large product catalogs.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Product Management" icon="box">
+    Create and manage products with prices, descriptions, and custom attributes
+  </Card>
+  <Card title="Category Organization" icon="layer-group">
+    Hierarchical category system with archive/restore capabilities
+  </Card>
+  <Card title="Variant Support" icon="sliders">
+    Custom attributes (size, color, material) with multiple value options
+  </Card>
+  <Card title="Stock Control" icon="warehouse">
+    Real-time stock tracking per product variant with low-stock alerts
+  </Card>
+</CardGroup>
+
+## Module Architecture
+
+### Core Files
+
+- **JavaScript**: `public/js/inventario.js` (907 lines)
+- **HTML**: `public/pages/admin/inventario.html` (236 lines)
+- **Database Collections**: `articulos`, `categoria`, `atributo`, `valor`, `stock_inventario`
+
+### Data Model
+
+The inventory system uses a normalized database structure:
+
+```
+articulos (products)
+├── categoria (categories)
+├── atributo (attributes: size, color, etc.)
+│   └── valor (attribute values: S, M, L, etc.)
+└── stock_inventario (stock per variant)
+```
+
+## Product Management
+
+### Creating a Product
+
+<Steps>
+  <Step title="Open Product Modal">
+    Click **Nuevo Producto** button to open the product creation form
+  </Step>
+  
+  <Step title="Enter Product Details">
+    Required fields:
+    - **Nombre**: Product name
+    - **Precio base**: Base price (S/.)
+    - **Cantidad**: Initial stock quantity
+    - **Categoría**: Select from dropdown
+    - **Característica**: Attribute (e.g., "Talla")
+    - **Detalle**: Attribute value (e.g., "M")
+    
+    Optional:
+    - **Descripción**: Product description
+    - **Imagen**: Product photo (currently disabled)
+  </Step>
+  
+  <Step title="Product Registration">
+    The system creates two documents:
+    
+    **Articulo Document** (`inventario.js:602-622`):
+    ```javascript
+    {
+      nombre: string,
+      descripcion: string | null,
+      precio_base: number,
+      id_categoria: string,  // doc reference ID
+      estado: 'activo',
+      fecha_registro: serverTimestamp()
+    }
+    ```
+    
+    **Stock Document** (`inventario.js:624-635`):
+    ```javascript
+    {
+      id_categoria: string,
+      id_stock: string,  // auto-generated
+      id_articulo: string,  // links to articulo
+      id_atributo: number,  // attribute correlative
+      id_valor: number,  // value correlative
+      stock: number,
+      fecha_registro: serverTimestamp()
+    }
+    ```
+  </Step>
+  
+  <Step title="View in Catalog">
+    Product appears in main table with aggregated stock from all variants
+  </Step>
+</Steps>
+
+### Product Table Display
+
+The product table (`inventario.js:392-512`) shows real-time data with optimized queries:
+
+| Column | Source | Description |
+|--------|--------|-------------|
+| Imagen | - | Placeholder (image upload disabled) |
+| Nombre | `articulos.nombre` | Product name |
+| Categoría | `categoria.nombre` | Category via join |
+| Característica | `atributo.nombre_atributo` | Attribute names (e.g., "Talla, Color") |
+| Detalle | `valor.valor` | Attribute values (e.g., "M, Rojo") |
+| Precio Base | `articulos.precio_base` | Base selling price |
+| Stock | Sum of `stock_inventario.stock` | Total inventory |
+| Descripción | `articulos.descripcion` | Product notes |
+| Estado | `articulos.estado` | Active/Discontinued |
+| Acciones | - | Edit and status buttons |
+
+<Warning>
+  Stock is automatically calculated by summing all variant quantities. The system performs parallel queries for optimal performance.
+</Warning>
+
+## Category Management
+
+### Creating Categories
+
+Categories provide product organization:
+
+```javascript
+// From inventario.js:136-158
+const payload = {
+  nombre: string,
+  descripcion: string | null,
+  estado: 'activo',
+  fecha_registro: serverTimestamp()
+};
+```
+
+### Category States
+
+<Tabs>
+  <Tab title="Active">
+    **Estado: activo**
+    - Visible in product creation dropdown
+    - Can be assigned to new products
+    - Displayed in reports
+    - Badge: Green "ACTIVO"
+  </Tab>
+  
+  <Tab title="Inactive">
+    **Estado: inactivo**
+    - Hidden from new product assignments
+    - Existing products retain the category
+    - Archived from main view
+    - Badge: Red "INACTIVO"
+    - Can be restored using "Restaurar" button
+  </Tab>
+</Tabs>
+
+### Archiving Categories
+
+The category section uses a collapsible design (`inventario.js:185-188`):
+
+```javascript
+togggleCategoria.addEventListener("click", () => {
+  categoriaContent.classList.toggle("show");
+  categoriaIcon.classList.toggle("rotate");
+});
+```
+
+To archive a category (`inventario.js:828-840`):
+
+<Steps>
+  <Step title="Confirm Archive">
+    Click **Archivar** button on the category row
+  </Step>
+  <Step title="Update Status">
+    System sets `estado: "inactivo"` and adds `fecha_actualizacion: serverTimestamp()`
+  </Step>
+  <Step title="Visual Feedback">
+    Row opacity reduces to 0.6, badge changes to red
+  </Step>
+</Steps>
+
+## Attributes and Values
+
+### Attribute System
+
+Attributes define product characteristics:
+
+**Example Attributes**:
+- Talla (Size)
+- Color (Color)
+- Material (Material)
+- Estilo (Style)
+
+### Creating Attributes
+
+```javascript
+// From inventario.js:297-320
+const snap = await getDocs(collection(db, "atributo"));
+const correlativo = snap.size + 1;
+
+const payload = {
+  id_atributo: correlativo,  // manual correlative
+  nombre_atributo: string
+};
+```
+
+<Note>
+  Attributes use manual correlative IDs instead of Firestore auto-IDs for easier querying.
+</Note>
+
+### Adding Attribute Values
+
+Each attribute can have multiple values:
+
+**Talla Values**: S, M, L, XL, XXL
+**Color Values**: Rojo, Azul, Verde, Negro, Blanco
+
+```javascript
+// From inventario.js:356-389
+const payload = {
+  id_valor: correlativo,
+  id_atributo: parseInt(selectAtributo.value),
+  valor: string
+};
+```
+
+### Attribute-Value Modal Flow
+
+<Steps>
+  <Step title="Create Attribute">
+    Click **+** next to "Característica" dropdown → Opens **Nueva Característica** modal
+  </Step>
+  
+  <Step title="Add Values">
+    Click **+** next to "Detalle" dropdown → Opens **Nuevo Valor** modal → Select attribute → Enter value
+  </Step>
+  
+  <Step title="Auto-Refresh">
+    New attributes automatically populate in the product form dropdown (`inventario.js:324`)
+  </Step>
+</Steps>
+
+## Stock Management
+
+### Stock Tracking Model
+
+Each product variant has a separate stock record:
+
+```typescript
+interface StockInventario {
+  id_categoria: string;
+  id_stock: string;
+  id_articulo: string;  // parent product
+  id_atributo: number;  // e.g., "Talla"
+  id_valor: number;     // e.g., "M"
+  stock: number;
+  fecha_registro: Timestamp;
+  fecha_actualizacion?: Timestamp;
+}
+```
+
+### Aggregated Stock Display
+
+The product table shows total stock across all variants (`inventario.js:415-426`):
+
+```javascript
+const stockSnap = await getDocs(
+  query(collection(db, "stock_inventario"), 
+        where("id_articulo", "==", art.id))
+);
+
+let stockTotal = 0;
+for (const sDoc of stockSnap.docs) {
+  const sData = sDoc.data();
+  stockTotal += sData.stock || 0;
+}
+```
+
+## Product Editing
+
+### Edit Modal Flow
+
+<Steps>
+  <Step title="Open Edit Mode">
+    Click **Editar** button on product row → Opens modal with current data
+  </Step>
+  
+  <Step title="Enable Editing">
+    Click **Editar** button in modal → Fields become editable
+  </Step>
+  
+  <Step title="Update Fields">
+    Modify name, description, price, category, or stock → Click **Guardar Cambios**
+  </Step>
+  
+  <Step title="Batch Update">
+    System updates:
+    - **Articulo** document with new product data
+    - All related **stock_inventario** documents with new stock value
+  </Step>
+</Steps>
+
+Edit function (`inventario.js:755-805`):
+
+```javascript
+await updateDoc(artRef, {
+  nombre,
+  descripcion: descripcion || null,
+  precio_base: precio,
+  id_categoria: categoriaId,
+  fecha_actualizacion: serverTimestamp()
+});
+
+// Update all stock records
+const stockDocIds = JSON.parse(btn.dataset.stockdocs || "[]");
+for (const stockDocId of stockDocIds) {
+  const stockRef = doc(db, "stock_inventario", stockDocId);
+  await updateDoc(stockRef, {
+    stock,
+    fecha_actualizacion: serverTimestamp()
+  });
+}
+```
+
+## Product Lifecycle Management
+
+### Discontinuing Products
+
+<Warning>
+  Products with stock cannot be discontinued. Clear inventory to zero before discontinuing.
+</Warning>
+
+Discontinue workflow (`inventario.js:858-874`):
+
+```javascript
+if (stock > 0) {
+  alert('No se puede descontinuar un producto con stock disponible. Stock actual: ' + stock);
+  return;
+}
+
+await updateDoc(doc(db, "articulos", id), {
+  estado: "descontinuado",
+  fecha_actualizacion: serverTimestamp()
+});
+```
+
+### Reactivating Products
+
+Discontinued products can be reactivated (`inventario.js:878-889`):
+
+<Steps>
+  <Step title="Filter View">
+    Use **Estado** filter to show "Descontinuados"
+  </Step>
+  
+  <Step title="Reactivate">
+    Click **Reactivar** button → Sets `estado: "activo"`
+  </Step>
+  
+  <Step title="Add Stock">
+    Edit product to add new stock quantities
+  </Step>
+</Steps>
+
+## Filtering and Search
+
+### Product Filters
+
+The filter system (`inventario.js:515-572`) supports:
+
+**Estado Filter**:
+- Todos (All)
+- Activos (Active only)
+- Descontinuados (Discontinued only)
+
+Implementation:
+
+```javascript
+const filterEstado = document.getElementById("filterEstadoProducto")?.value || "";
+
+const productosFiltrados = allProductos.filter(({ art }) => {
+  if (!filterEstado) return true;
+  const estadoProducto = art.estado || 'activo';
+  return estadoProducto === filterEstado;
+});
+```
+
+## Performance Optimization
+
+### Parallel Query Strategy
+
+The module uses Promise.all() for parallel database queries (`inventario.js:401-443`):
+
+```javascript
+// 1. Fetch all articles
+const articulosProcesados = snapshot.docs.map(async (artDoc) => {
+  const art = { id: artDoc.id, ...artDoc.data() };
+
+  // 2. Parallel queries for this article
+  const [categoriaSnap, stockSnap] = await Promise.all([
+    getDoc(doc(db, "categoria", art.id_categoria)),
+    getDocs(query(collection(db, "stock_inventario"), 
+                  where("id_articulo", "==", art.id)))
+  ]);
+
+  // 3. Parallel queries for stock attributes
+  let stockPromises = [];
+  for (const sDoc of stockSnap.docs) {
+    const attrValPromise = Promise.all([
+      getDocs(query(collection(db, "atributo"), ...)),
+      getDocs(query(collection(db, "valor"), ...))
+    ]);
+    stockPromises.push(attrValPromise);
+  }
+
+  const resultadosStocks = await Promise.all(stockPromises);
+  return { art, categoriaNombre, stockTotal, atributosNombres, valoresNombres };
+});
+
+// Wait for all articles to finish
+const resultadosFinales = await Promise.all(articulosProcesados);
+```
+
+### Snapshot Metadata Check
+
+Prevents duplicate rendering on save (`inventario.js:399`):
+
+```javascript
+if (snapshot.metadata.hasPendingWrites) return;
+```
+
+## UI Components
+
+### Collapsible Category Section
+
+```html
+<div class="categoria-section">
+  <div class="categoria-header" id="toggleCategoria">
+    <h2>Categorías</h2>
+    <span>Ingresa nuevas categorías o visualiza las ya creadas</span>
+    <i class="fa fa-chevron-down categoria-icon"></i>
+  </div>
+  <div class="categoria-content" id="categoriaContent">
+    <!-- Category table -->
+  </div>
+</div>
+```
+
+### Product Filter Bar
+
+```html
+<div style="display: flex; justify-content: space-between; align-items: center;">
+  <div class="filter-group">
+    <label for="filterEstadoProducto">Estado:</label>
+    <select id="filterEstadoProducto">
+      <option value="">Todos</option>
+      <option value="activo">Activos</option>
+      <option value="descontinuado">Descontinuados</option>
+    </select>
+  </div>
+  <button class="btn btn-primary" id="btnAddArticulo">
+    <i class="fa fa-plus"></i> Nuevo Producto
+  </button>
+</div>
+```
+
+## Data Structure Reference
+
+### Articulos Collection
+
+```typescript
+interface Articulo {
+  nombre: string;
+  descripcion: string | null;
+  precio_base: number;
+  id_categoria: string;  // Firestore doc ID
+  estado: "activo" | "descontinuado";
+  fecha_registro: Timestamp;
+  fecha_actualizacion?: Timestamp;
+}
+```
+
+### Categoria Collection
+
+```typescript
+interface Categoria {
+  nombre: string;
+  descripcion: string | null;
+  estado: "activo" | "inactivo";
+  fecha_registro: Timestamp;
+  fecha_actualizacion?: Timestamp;
+}
+```
+
+### Atributo Collection
+
+```typescript
+interface Atributo {
+  id_atributo: number;  // Manual correlative
+  nombre_atributo: string;
+}
+```
+
+### Valor Collection
+
+```typescript
+interface Valor {
+  id_valor: number;  // Manual correlative
+  id_atributo: number;  // Links to atributo
+  valor: string;
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Stock Management" icon="warehouse">
+    Always verify stock levels before discontinuing products to avoid inventory conflicts
+  </Card>
+  <Card title="Category Organization" icon="folder-tree">
+    Use descriptive category names and archive unused categories instead of deleting
+  </Card>
+  <Card title="Attribute Naming" icon="tag">
+    Create reusable attributes (Talla, Color) that apply to multiple products
+  </Card>
+  <Card title="Price Updates" icon="dollar-sign">
+    Update prices in bulk by category rather than individual products when possible
+  </Card>
+</CardGroup>
+
+## Common Workflows
+
+### Adding a Product with Multiple Variants
+
+<Steps>
+  <Step title="Create Base Product">
+    Add product with first variant (e.g., Polo - Talla M - Stock 50)
+  </Step>
+  
+  <Step title="Add Additional Variants">
+    Manually add more stock records for same product with different attribute values
+  </Step>
+  
+  <Step title="Stock Aggregation">
+    System automatically sums all variants for total stock display
+  </Step>
+</Steps>
+
+<Note>
+  Currently, the system requires creating separate stock entries for each variant. Future versions may support bulk variant creation.
+</Note>
+
+## Related Modules
+
+- [Human Resources](/features/human-resources) - Manage employees who handle inventory
+- [Reports](/features/reports) - Inventory analytics and stock reports
+- [Database Schema](/api/database-schema) - Inventory collection structures
+
+## Code Reference
+
+**Key Functions**:
+- `renderProductos()` - inventario.js:515
+- `guardarArticulo()` - inventario.js:585
+- `populateEditarModal()` - inventario.js:667
+- `guardarCambiosArticulo()` - inventario.js:755
+- `descontinuarProducto()` - inventario.js:858

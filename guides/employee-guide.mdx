@@ -1,0 +1,365 @@
+---
+title: 'Employee Guide'
+description: 'Guide for employees using TextileFlow ERP to manage attendance, view payments, and update profiles'
+icon: 'user'
+---
+
+This guide helps employees navigate the TextileFlow ERP system to manage their daily tasks, track attendance, view payment history, and maintain their profile information.
+
+## Getting Started
+
+As an employee, you have access to your personal dashboard where you can manage your attendance, view payment history, and update your profile information.
+
+### First Time Login
+
+<Steps>
+  <Step title="Navigate to login page">
+    Open the TextileFlow login page in your web browser.
+  </Step>
+  
+  <Step title="Enter credentials">
+    - Enter your company email address
+    - Enter the password provided by your administrator
+  </Step>
+  
+  <Step title="Access employee dashboard">
+    After successful login, you'll be redirected to `/employee/dashboard.html` based on your "Empleado" role.
+  </Step>
+</Steps>
+
+<Note>
+  If you don't have login credentials, contact your administrator. New employees are registered through the admin panel at `rrhh.html`.
+</Note>
+
+## Employee Dashboard
+
+Your personal dashboard (`/employee/dashboard.html`) provides an overview of your work activities and quick access to key features.
+
+### Dashboard Statistics
+
+The dashboard displays three key statistics for the current month:
+
+<AccordionGroup>
+  <Accordion title="Días Presente (Mes)" icon="check-circle">
+    Shows the total number of days you've marked attendance this month. This count is based on days where you've registered an entry (entrada) in the attendance system.
+  </Accordion>
+  
+  <Accordion title="Tardanzas (Mes)" icon="clock">
+    Displays the number of times you arrived late this month. The system considers you late if your entry time is after 8:30 AM.
+  </Accordion>
+  
+  <Accordion title="Horas Trabajadas" icon="calendar-alt">
+    Shows your total working hours calculated from your entry and exit times. Hours are computed when both entrada and salida are recorded for a day.
+  </Accordion>
+</AccordionGroup>
+
+### Recent Payments
+
+The dashboard shows your last 5 payment records including:
+- **Periodo** - Payment period (e.g., "FEBRERO 2025")
+- **Concepto** - Payment description (typically "Pago de Planilla")
+- **Monto** - Payment amount in Soles (S/)
+- **Estado** - Payment status (badge showing "Pagado")
+
+<Note>
+  Payment records are retrieved from the `pagos_empleados` Firestore collection filtered by your user ID (uid).
+</Note>
+
+### Quick Access Cards
+
+Three quick access cards provide direct navigation to main features:
+
+- **Mis Asistencias** - View and mark attendance
+- **Mis Pagos** - Complete payment history
+- **Mi Perfil** - Edit personal information
+
+## Managing Attendance
+
+Access the attendance module at `/employee/asistencias.html` to track your daily work hours.
+
+### Marking Attendance
+
+<Steps>
+  <Step title="Navigate to Mis Asistencias">
+    Click the "Mis Asistencias" card from your dashboard or access it from the sidebar menu.
+  </Step>
+  
+  <Step title="Mark your entry">
+    Click the "Marcar Entrada" button when you arrive at work. The system records:
+    - Current date
+    - Entry time (hora)
+    - Your user ID (userId)
+    - Type: "entrada"
+  </Step>
+  
+  <Step title="Mark your exit">
+    At the end of your workday, click the "Marcar Salida" button. This records:
+    - Current date
+    - Exit time (hora)
+    - Your user ID
+    - Type: "salida"
+  </Step>
+</Steps>
+
+<Warning>
+  You must mark your entry (entrada) before you can mark your exit (salida). The exit button is disabled until you've marked your entry for the day.
+</Warning>
+
+### Attendance Status Display
+
+Once you've marked attendance for the day, the system displays:
+
+- **Entrada** - Your entry time (e.g., "08:25")
+- **Salida** - Your exit time (e.g., "17:00") or "--:--" if not yet marked
+
+### Schedule Information
+
+The page displays your expected work schedule:
+- **Entrada** - 08:00 AM (standard start time)
+- **Salida** - 05:00 PM (standard end time)
+
+### Attendance History
+
+View your personal attendance records with filtering options:
+
+**Filter Options:**
+- **Últimos 7 días** - Past week's attendance
+- **Últimos 30 días** - Past month's attendance
+
+**History Table Columns:**
+- **Fecha** - Date of attendance
+- **Entrada** - Entry time
+- **Salida** - Exit time
+- **Horas** - Total hours worked that day
+- **Estado** - Status (e.g., "A tiempo", "Tardanza", "Sin salida")
+
+<Note>
+  Your attendance data is stored in the `asistencias` Firestore collection with entries filtered by your unique user ID.
+</Note>
+
+## Viewing Payment History
+
+Access your complete payment history at `/employee/payments.html`.
+
+### Payment Information
+
+The payment page displays a comprehensive table with:
+
+- **Periodo** - Payment period (formatted as "ENERO 2025", "FEBRERO 2025", etc.)
+- **Concepto** - Payment description or notes
+- **Monto** - Payment amount with currency (S/)
+- **Estado** - Payment status:
+  - **Pagado** - Payment completed (green badge)
+  - **Pendiente** - Payment pending (yellow badge)
+  - **Anulado** - Payment cancelled (not shown in active list)
+
+### Sorting and Filtering
+
+Payments are automatically sorted by period in descending order, showing the most recent payments first.
+
+<Note>
+  Only payments with status "pagado" or "pendiente" are displayed. Cancelled payments (estado: "anulado") are filtered out.
+</Note>
+
+## Managing Your Profile
+
+Update your personal information at `/employee/profile.html`.
+
+### Profile Information
+
+Your profile displays:
+- Profile avatar icon
+- Your full name (nombre + apellido)
+- Your role ("Empleado")
+
+### Editable Personal Data
+
+<Tabs>
+  <Tab title="Personal Information">
+    **Fields you can update:**
+    
+    - **Nombre** - First name (required)
+    - **Apellido** - Last name (required)
+    - **Email** - Email address (required)
+    - **Teléfono** - Phone number (optional)
+    - **Dirección** - Home address (optional)
+    
+    **Read-only fields:**
+    
+    - **Rol** - Your system role (cannot be changed by employees)
+    - **Fecha de Contratación** - Your hire date (set by administrator)
+    
+    Click "Guardar Cambios" to save your updates.
+  </Tab>
+  
+  <Tab title="Change Password">
+    Update your password to maintain account security.
+    
+    **Required fields:**
+    
+    - **Contraseña Actual** - Your current password
+    - **Nueva Contraseña** - New password (minimum 8 characters)
+    - **Confirmar Contraseña** - Re-enter new password for confirmation
+    
+    <Warning>
+      Ensure your new password:
+      - Is at least 8 characters long
+      - Matches in both "Nueva Contraseña" and "Confirmar Contraseña" fields
+      - Is different from your current password
+    </Warning>
+    
+    Click "Cambiar Contraseña" to update.
+  </Tab>
+</Tabs>
+
+### Profile Update Process
+
+<Steps>
+  <Step title="Navigate to profile">
+    Click "Mi Perfil" from your dashboard or sidebar menu.
+  </Step>
+  
+  <Step title="Edit information">
+    Update any editable fields in the "Datos Personales" section.
+  </Step>
+  
+  <Step title="Save changes">
+    Click the "Guardar Cambios" button. A status message will confirm the update.
+  </Step>
+</Steps>
+
+<Note>
+  Profile data is stored in the `usuario` Firestore collection and is updated in real-time when you save changes.
+</Note>
+
+## Navigation Menu
+
+The sidebar menu provides access to all employee features:
+
+- **Mi Dashboard** - Return to main dashboard
+- **Mis Asistencias** - Attendance tracking
+- **Mis Pagos** - Payment history
+- **Mi Perfil** - Profile management
+- **Cerrar Sesión** - Logout from the system
+
+<Note>
+  On mobile devices, click the hamburger menu icon (☰) to toggle the sidebar visibility.
+</Note>
+
+## Understanding Attendance Rules
+
+### Punctuality
+
+- **On Time** - Entry before or at 8:30 AM
+- **Late (Tardanza)** - Entry after 8:30 AM
+
+### Daily Attendance
+
+You must mark both entry and exit each day:
+1. Mark "Entrada" when you start work
+2. Mark "Salida" when you finish work
+
+### Hours Calculation
+
+Working hours are calculated as:
+```
+Horas = (Exit Time - Entry Time)
+```
+
+Hours are only calculated for days where both entry and exit are marked.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Daily Routine">
+    1. Mark your entry as soon as you arrive (before 8:30 AM to avoid tardiness)
+    2. Check your dashboard for any important updates
+    3. Mark your exit before leaving work
+  </Accordion>
+  
+  <Accordion title="Weekly Review">
+    1. Review your attendance history for accuracy
+    2. Check that all days have both entry and exit marked
+    3. Verify your total hours worked
+  </Accordion>
+  
+  <Accordion title="Monthly Tasks">
+    1. Review your payment record for the month
+    2. Verify payment amount matches expected salary
+    3. Update profile information if any contact details changed
+  </Accordion>
+</AccordionGroup>
+
+## Session Management
+
+### Staying Logged In
+
+Your session is stored locally in your browser. The system uses:
+- **Storage Key:** `textileflow_session`
+- **Session Data:** uid, email, nombre, apellido, displayName, rol, permissions, timestamp
+
+### Automatic Logout
+
+The system includes session protection that monitors:
+- Tab/window changes
+- Browser window focus
+- Session tampering attempts
+
+<Warning>
+  For security, always use the "Cerrar Sesión" button to log out properly. Do not simply close the browser window.
+</Warning>
+
+## Troubleshooting
+
+### Common Issues
+
+**Cannot mark attendance:**
+- Ensure you're connected to the internet
+- Check that you haven't already marked attendance for today
+- Refresh the page and try again
+- Verify your session is active
+
+**Exit button is disabled:**
+- You must mark your entry first before marking exit
+- Check if you've already marked entry for today
+- If the issue persists, contact your administrator
+
+**Payment history not showing:**
+- Ensure you have payment records for the current period
+- Check your internet connection
+- Contact administrator if payments should be visible but aren't
+
+**Profile updates not saving:**
+- Verify all required fields are filled
+- Check that email format is valid
+- Ensure you have internet connectivity
+- Try logging out and back in
+
+**Password change failing:**
+- Verify current password is correct
+- Ensure new password is at least 8 characters
+- Confirm new password matches in both fields
+- Check that new password is different from current
+
+## Security Tips
+
+<Warning>
+  - Never share your login credentials
+  - Change your password regularly
+  - Always log out on shared computers
+  - Report any suspicious activity to your administrator
+  - Keep your contact information up to date
+</Warning>
+
+## Support
+
+If you encounter issues or need assistance:
+
+1. Check this guide for common solutions
+2. Review the [Authentication Guide](/guides/authentication) for login issues
+3. Contact your system administrator
+4. Provide specific error messages if any appear
+
+<Note>
+  For payroll questions, HR issues, or access problems, contact your administrator through the proper company channels.
+</Note>

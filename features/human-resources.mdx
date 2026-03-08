@@ -1,0 +1,336 @@
+---
+title: 'Human Resources Management'
+description: 'Comprehensive employee and client management with role-based access control'
+icon: 'users'
+---
+
+## Overview
+
+The Human Resources (RRHH) module provides complete user lifecycle management for the TextileFlow ERP system, handling employees, clients, and administrators with robust validation and real-time data synchronization.
+
+<Note>
+  This module integrates with Firebase Authentication and Firestore for secure user management and real-time updates.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="user-plus">
+    Create, edit, and manage users with document validation and status tracking
+  </Card>
+  <Card title="Role-Based Access" icon="shield-halved">
+    Support for Employees, Administrators, and Clients with distinct permissions
+  </Card>
+  <Card title="Employee Payroll" icon="money-bill">
+    Track employee salaries, entry dates, and exit dates with planilla management
+  </Card>
+  <Card title="Real-Time Search" icon="magnifying-glass">
+    Advanced filtering by document type, role, status, and keywords
+  </Card>
+</CardGroup>
+
+## Module Architecture
+
+### Core Files
+
+- **JavaScript**: `public/js/rrhh.js` (1,105 lines)
+- **HTML**: `public/pages/admin/rrhh.html` (356 lines)
+- **Database Collections**: `usuario`, `usuario_admin`
+
+### User Roles
+
+| Role | Description | Access Level |
+|------|-------------|-------------|
+| **Administrador** | Full system access with RRHH management | Admin |
+| **Empleado** | Internal staff with attendance and task access | User |
+| **Cliente** | External customers with order access only | Client |
+
+## User Management Workflow
+
+<Steps>
+  <Step title="Access User Management">
+    Navigate to **RRHH** from the admin sidebar. The module displays three tabs:
+    - **Usuarios**: All employees and administrators
+    - **Clientes**: Customer accounts
+    - **Empleados**: Payroll and employee details
+  </Step>
+  
+  <Step title="Create New User">
+    Click **Agregar Usuario** button to open the user creation modal.
+    
+    Required fields:
+    - Document Type (CC, CE, DNI, PA, RUC)
+    - Document Number (validated by type)
+    - First Name
+    - Last Name
+    - Email (must be unique)
+    - Role (Empleado/Administrador/Cliente)
+    - Password (min 6 characters)
+    
+    Optional fields:
+    - Phone Number
+    - Address
+  </Step>
+  
+  <Step title="Document Validation">
+    The system validates document numbers based on type:
+    - **DNI**: 8 digits
+    - **RUC**: 11 digits
+    - **CC**: 6-10 digits
+    - **CE**: 9 digits
+    - **PA**: 7-9 alphanumeric
+    
+    Duplicate document validation prevents registration errors.
+  </Step>
+  
+  <Step title="User Activation">
+    New users are created with `estado: "activo"` and registered in Firebase Authentication.
+    The system stores:
+    - User credentials in Auth
+    - Profile data in `usuario` collection
+    - Timestamp: `fecha_ingreso: serverTimestamp()`
+  </Step>
+</Steps>
+
+## Employee Payroll Management
+
+### Setting Up Employee Salaries
+
+Employee salary information is stored separately in the `usuario_admin` collection:
+
+```javascript
+// From rrhh.js:405
+await setDoc(doc(db, "usuario_admin", uid), {
+  uid,
+  salario: Number,
+  fechaIngreso: "YYYY-MM-DD",
+  horas_trabajadas: 0,
+  bonificaciones: 0,
+  descuentos: 0
+});
+```
+
+### Planilla View (Employee Roster)
+
+The **Empleados** tab displays comprehensive payroll information:
+
+| Column | Source | Description |
+|--------|--------|-------------|
+| Nombre Completo | `usuario.nombre + apellido` | Employee full name |
+| Teléfono | `usuario.telefono` | Contact number |
+| Email | `usuario.email` | Email address |
+| Fecha de Ingreso | `usuario_admin.fechaIngreso` | Hire date |
+| Antigüedad | Calculated | Years/months/days in service |
+| Salario | `usuario_admin.salario` | Monthly salary (S/. format) |
+| Estado | `usuario.estado` | Active/Inactive |
+| Fecha de Salida | `usuario_admin.fechaSalida` | Exit date (if inactive) |
+
+<Warning>
+  When inactivating an employee, the system automatically records the exit date (`fechaSalida`) in the `usuario_admin` collection.
+</Warning>
+
+## Advanced Features
+
+### Multi-Filter Search
+
+**Usuarios Tab Filters** (`rrhh.js:88-145`):
+
+```javascript
+// Live filter implementation
+const filteredUsers = allUsers.filter(cliente => {
+  // Skip clients in employee view
+  if (cliente.rol === 'Cliente') return false;
+  
+  const matchesSearch = !searchTerm ||
+    (cliente.nombre && cliente.nombre.toLowerCase().includes(searchTerm)) ||
+    (cliente.apellido && cliente.apellido.toLowerCase().includes(searchTerm)) ||
+    (cliente.email && cliente.email.toLowerCase().includes(searchTerm)) ||
+    (cliente.documento && cliente.documento.includes(searchTerm));
+
+  const matchesTipoDoc = !filterTipoDoc || cliente.tipo_documento === filterTipoDoc;
+  const matchesRol = !filterRol || cliente.rol === filterRol;
+  const matchesEstado = !filterEstado || cliente.estado === filterEstado;
+
+  return matchesSearch && matchesTipoDoc && matchesRol && matchesEstado;
+});
+```
+
+### Status Management
+
+Toggling user status (`rrhh.js:326-393`):
+
+<Tabs>
+  <Tab title="Activation">
+    When activating a user:
+    - Sets `estado: "activo"`
+    - Clears `fechaSalida` in `usuario_admin`
+    - User regains system access
+  </Tab>
+  
+  <Tab title="Deactivation">
+    When deactivating a user:
+    - Sets `estado: "inactivo"`
+    - Records current date in `fechaSalida`
+    - Prompts for confirmation with exit date
+    - User loses system access
+  </Tab>
+</Tabs>
+
+### Export Options
+
+The module supports three export formats:
+
+1. **PDF Export** (`generatePDF()` - line 408):
+   - Landscape orientation
+   - Auto-sized columns
+   - Excludes actions column
+   - Filename: `Usuarios_RRHH_DD-MM-YYYY.pdf`
+
+2. **Excel Export** (`exportToExcel()` - line 462):
+   - Uses XLSX library
+   - Custom column widths
+   - Filename: `Usuarios_RRHH_DD-MM-YYYY.xlsx`
+
+3. **Print** (`printTable()` - line 514):
+   - Opens print preview
+   - Formatted header with generation time
+   - Responsive table styling
+
+## Data Structure
+
+### Usuario Collection
+
+```typescript
+interface Usuario {
+  tipo_documento: "CC" | "CE" | "DNI" | "PA" | "RUC";
+  documento: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  estado: "activo" | "inactivo";
+  fecha_ingreso: Timestamp;
+  rol: "Administrador" | "Empleado" | "Cliente";
+  telefono?: string;
+  direccion?: string;
+}
+```
+
+### Usuario_Admin Collection
+
+```typescript
+interface UsuarioAdmin {
+  uid: string;
+  salario: number;
+  fechaIngreso: string;  // "YYYY-MM-DD"
+  fechaSalida?: string | null;
+  horas_trabajadas: number;
+  bonificaciones: number;
+  descuentos: number;
+}
+```
+
+## User Interface Components
+
+### Tab Navigation
+
+The module uses a three-tab interface (`rrhh.html:43-53`):
+
+```html
+<div class="tabs-container">
+  <button class="tab-button active" onclick="switchTab('usuarios')">
+    <i class="fas fa-users"></i> Usuarios
+  </button>
+  <button class="tab-button" onclick="switchTab('clientes')">
+    <i class="fas fa-user-tie"></i> Clientes
+  </button>
+  <button class="tab-button" onclick="switchTab('empleados')">
+    <i class="fas fa-user-clock"></i> Empleados
+  </button>
+</div>
+```
+
+### User Form Modal
+
+The add/edit modal (`rrhh.html:258-342`) includes:
+
+- **Form validation**: Real-time document and phone validation
+- **Password management**: Required for new users, optional for edits
+- **Role selection**: Dropdown with three options
+- **Error messaging**: Field-level error display
+
+## Security Features
+
+<CardGroup cols={2}>
+  <Card title="Duplicate Prevention" icon="ban">
+    Email and document number uniqueness checks before creation
+  </Card>
+  <Card title="Firebase Auth Integration" icon="lock">
+    User credentials managed through Firebase Authentication
+  </Card>
+  <Card title="Session Management" icon="clock">
+    Protected routes with `requireAdmin()` guard
+  </Card>
+  <Card title="Validation Rules" icon="shield-check">
+    Document format and phone number validation per country standards
+  </Card>
+</CardGroup>
+
+## Common Workflows
+
+### Adding a New Employee
+
+<Steps>
+  <Step title="Create User Account">
+    Use **Agregar Usuario** with role set to "Empleado"
+  </Step>
+  
+  <Step title="Set Salary Information">
+    Switch to **Empleados** tab, use **Editar Planilla** to add:
+    - Monthly salary
+    - Entry date
+  </Step>
+  
+  <Step title="Verify in Roster">
+    Employee appears in planilla table with all salary details
+  </Step>
+</Steps>
+
+### Managing Client Access
+
+<Steps>
+  <Step title="Create Client Account">
+    From **Clientes** tab, click **Agregar Cliente** (role auto-set to "Cliente")
+  </Step>
+  
+  <Step title="Client Filtering">
+    Clients are automatically filtered out of the **Usuarios** and **Empleados** views
+  </Step>
+</Steps>
+
+## Best Practices
+
+<Note>
+  **Salary Management**: Always set employee salary data immediately after user creation to ensure accurate payroll processing.
+</Note>
+
+<Warning>
+  **Email Uniqueness**: Email addresses must be unique across all roles. The system prevents duplicate emails even if the user was previously deleted from Auth.
+</Warning>
+
+<Tip>
+  Use the **Limpiar** (Clear Filters) button to reset all search criteria and view the complete user list.
+</Tip>
+
+## Related Modules
+
+- [Attendance Management](/features/attendance) - Track employee check-ins/outs
+- [Payroll Management](/features/payroll) - Process monthly payments
+- [Reports](/features/reports) - Generate RRHH analytics
+
+## Code Reference
+
+**Key Functions**:
+- `handleSaveClient()` - rrhh.js:196
+- `toggleClientStatus()` - rrhh.js:326
+- `renderEmpleadosTablePlanilla()` - rrhh.js:776
+- `applyFilters()` - rrhh.js:88

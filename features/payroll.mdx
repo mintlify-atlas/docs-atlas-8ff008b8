@@ -1,0 +1,570 @@
+---
+title: 'Payroll Management'
+description: 'Complete payroll processing with salary management, bonuses, deductions, and payment tracking'
+icon: 'money-bill-wave'
+---
+
+## Overview
+
+The Payroll (Pagos) module handles complete salary management for TextileFlow ERP, including base salaries, bonuses, deductions, payment history tracking, and electronic pay slip generation.
+
+<Note>
+  The payroll system integrates with the RRHH module for employee data and uses period-based tracking (YYYY-MM) for monthly payments.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Salary Registry" icon="dollar-sign">
+    Record monthly payments with base salary, bonuses, and deductions
+  </Card>
+  <Card title="Payment History" icon="clock-rotate-left">
+    Track all payments by employee and period with status indicators
+  </Card>
+  <Card title="Payment Cancellation" icon="ban">
+    Void payments with reason tracking (non-destructive)
+  </Card>
+  <Card title="Pay Slips" icon="file-invoice">
+    Generate PDF pay slips with company branding and detailed breakdown
+  </Card>
+</CardGroup>
+
+## Module Architecture
+
+### Core Files
+
+- **JavaScript**: `public/js/pagos.js` (896 lines)
+- **HTML**: `public/pages/admin/pagos.html`
+- **Database Collections**: `pagos_empleados`, `usuario`, `usuario_admin`
+
+### Payment Flow
+
+```
+1. Admin selects period (YYYY-MM)
+2. Employee dropdown filters to unpaid employees
+3. Salary auto-loads from usuario_admin
+4. Admin adds bonuses/deductions
+5. System calculates total
+6. Payment registered in pagos_empleados
+7. PDF pay slip generated on demand
+```
+
+## Payment Registration
+
+### Opening Payment Modal
+
+Click **Agregar Pago** button to open the payment form (`pagos.js:104-167`):
+
+<Steps>
+  <Step title="Select Payment Period">
+    Choose month from dropdown (shows last 3 months):
+    ```javascript
+    selectPeriodo.innerHTML = "";
+    for (let i = 0; i < 3; i++) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const value = `${year}-${month}`;
+      const label = formatMonthName(value);  // "Marzo 2026"
+      // Add option
+    }
+    ```
+  </Step>
+  
+  <Step title="Select Employee">
+    Dropdown automatically filters employees already paid in selected period:
+    ```javascript
+    // Get employees paid this period
+    const pagosSnap = await getDocs(
+      query(collection(db, "pagos_empleados"), 
+            where("periodo_pago", "==", periodo))
+    );
+    const empleadosPagados = new Set();
+    pagosSnap.forEach(doc => empleadosPagados.add(doc.data().uid));
+    
+    // Show only unpaid employees
+    usuariosActivosSnap.forEach(doc => {
+      if (!empleadosPagados.has(doc.id)) {
+        // Add to dropdown
+      }
+    });
+    ```
+  </Step>
+  
+  <Step title="Salary Auto-Load">
+    When employee is selected, base salary loads from `usuario_admin`:
+    ```javascript
+    employeeSelect.addEventListener("change", async () => {
+      const docRef = doc(db, "usuario_admin", uid);
+      const docSnap = await getDoc(docRef);
+      salaryInput.value = docSnap.exists() 
+        ? docSnap.data().salario ?? "" 
+        : "";
+    });
+    ```
+  </Step>
+  
+  <Step title="Add Bonuses/Deductions">
+    Enter optional amounts:
+    - **Bonificaciones**: Extra payments (overtime, commissions)
+    - **Deducciones**: Withholdings (advances, absences)
+  </Step>
+  
+  <Step title="Add Comments">
+    Optional notes field for payment details
+  </Step>
+</Steps>
+
+### Payment Calculation
+
+Total is calculated automatically (`pagos.js:299`):
+
+```javascript
+const dataPago = {
+  uid: uidEmpleado,
+  salario: Number(salaryInput.value) || 0,
+  bono: Number(bonusInput.value) || 0,
+  deduccion: Number(deductionsInput.value) || 0,
+  pago_total: salario + bono - deduccion,
+  periodo_pago: periodo,  // "2026-03"
+  detalle: comentario,
+  estado: "pagado",
+  fecha_registro: new Date()
+};
+```
+
+### Form Validation
+
+Validation checks before saving (`pagos.js:310-328`):
+
+```javascript
+function validarFormularioPago() {
+  const salario = parseFloat(salaryInput.value || 0);
+  const periodo = periodoPago.value.trim();
+  const empleado = employeeSelect.value;
+
+  if (!empleado) {
+    showStatus("Seleccione un empleado.", "error");
+    return false;
+  }
+  if (!periodo) {
+    showStatus("Seleccione un periodo de pago.", "error");
+    return false;
+  }
+  if (salario <= 0) {
+    showStatus("El salario base debe ser mayor a 0.", "error");
+    return false;
+  }
+  return true;
+}
+```
+
+## Payroll Dashboard
+
+### Summary Cards
+
+Three key metrics displayed at top (`pagos.js:571-548`):
+
+**Card 1: Total Planilla Activa**
+```javascript
+// Sum of all active employee base salaries
+async function obtenerTotalPlanillaActiva() {
+  const usuariosActivosSnap = await getDocs(
+    query(collection(db, "usuario"), where("estado", "==", "activo"))
+  );
+  const usuariosActivosIds = new Set();
+  usuariosActivosSnap.forEach(doc => usuariosActivosIds.add(doc.id));
+
+  const adminSnap = await getDocs(collection(db, "usuario_admin"));
+  let total = 0;
+  adminSnap.forEach(doc => {
+    if (usuariosActivosIds.has(doc.id)) {
+      total += Number(doc.data().salario);
+    }
+  });
+  return total;
+}
+```
+
+**Card 2: Salario Proyectado (Selected Month)**
+- Sum of all `pago_total` for selected month
+- Excludes voided payments (`estado !== "anulado"`)
+
+**Card 3: Salario Pendiente**
+```javascript
+// Total base salaries - already paid base salaries
+const pendiente = totalPlanillaBase - totalBasePagado;
+```
+
+### Payment History Table
+
+Real-time table with month filter (`pagos.js:417-492`):
+
+| Column | Source | Description |
+|--------|--------|-------------|
+| Nombre | `usuario.nombre + apellido` | Employee name |
+| Cargo | `usuario.rol` | Job role |
+| Salario | `pagos_empleados.salario` | Base monthly salary |
+| Bono | `pagos_empleados.bono` | Additional bonuses |
+| Deducciones | `pagos_empleados.deduccion` | Withholdings |
+| Pago Total | `pagos_empleados.pago_total` | Final amount paid |
+| Mes | `pagos_empleados.periodo_pago` | Payment period |
+| Detalle | `pagos_empleados.detalle` | Payment notes |
+| Acciones | - | View slip / Void buttons |
+
+### Show Voided Payments Toggle
+
+Switch to show/hide voided payments (`pagos.js:494-496`):
+
+```javascript
+showAnulledSwitch.addEventListener("change", () => {
+  cargarPagosMes(monthFilterSelect.value);
+});
+```
+
+Voided payments display:
+- Reduced opacity row (`.row-anulado`)
+- Red "ANULADO" badge instead of action buttons
+- Void reason in detalle column
+- **Not included** in total calculations
+
+## Payment Cancellation
+
+### Void Payment Flow
+
+<Steps>
+  <Step title="Open Void Modal">
+    Click void button (ban icon) on payment row
+  </Step>
+  
+  <Step title="Enter Reason">
+    Modal prompts for cancellation reason (required):
+    ```html
+    <form id="anularPagoForm">
+      <input type="hidden" id="anularPagoId" />
+      <label>Motivo de anulación *</label>
+      <textarea id="motivoAnulacion" required></textarea>
+    </form>
+    ```
+  </Step>
+  
+  <Step title="Confirm Void">
+    System updates payment document (`pagos.js:672-688`):
+    ```javascript
+    await setDoc(doc(db, "pagos_empleados", id), {
+      estado: "anulado",
+      motivo_anulacion: motivo,
+      fecha_anulacion: new Date()
+    }, { merge: true });
+    ```
+  </Step>
+  
+  <Step title="Visual Update">
+    - Row turns gray with "ANULADO" badge
+    - Employee can be paid again for same period
+    - Amount removed from totals
+  </Step>
+</Steps>
+
+<Warning>
+  Voiding a payment does NOT delete the record. It marks it as `estado: "anulado"` for audit trail. The employee can be paid again for the same period.
+</Warning>
+
+## Pay Slip Generation
+
+### PDF Pay Slip
+
+Click **Ver** button to generate electronic pay slip (`pagos.js:737-870`):
+
+**Document Structure**:
+
+1. **Header** (Blue bar with company info)
+   ```javascript
+   docPdf.setFillColor(41, 128, 185);  // Primary blue
+   docPdf.rect(0, 0, 210, 40, "F");
+   docPdf.text("JOAR'S S.A.C.", 20, 20);
+   docPdf.text("BOLETA DE PAGO ELECTRÓNICA", 20, 30);
+   docPdf.text(`RUC: 20123456789`, 150, 20);
+   ```
+
+2. **Employee Information** (Gray box)
+   ```javascript
+   docPdf.text(`Nombre: ${usuario.nombre} ${usuario.apellido}`, 20, y);
+   docPdf.text(`Documento: ${usuario.tipo_documento} ${usuario.documento}`, 20, y + 7);
+   docPdf.text(`Cargo: ${usuario.rol}`, 110, y);
+   docPdf.text(`Periodo Pago: ${formatMonthName(pago.periodo_pago)}`, 110, y + 7);
+   ```
+
+3. **Payment Breakdown** (Table)
+   ```
+   | CONCEPTO              | TIPO   | IMPORTE      |
+   |-----------------------|--------|-------------|
+   | Salario Básico        | Ingreso| S/. 1,500.00|
+   | Bonificaciones/Extras | Ingreso| S/.   200.00|
+   | Deducciones/Dsctos.   | Egreso | S/.    50.00|
+   ```
+
+4. **Total Net** (Highlighted)
+   ```javascript
+   docPdf.setFillColor(240, 240, 240);
+   docPdf.text("NETO A PAGAR:", 115, y + 8);
+   docPdf.setTextColor(41, 128, 185);  // Blue
+   const totalStr = formatearSoles(pago.pago_total);
+   docPdf.text(totalStr, 190 - totalWidth, y + 8);
+   ```
+
+5. **Signature Line and Footer**
+
+### PDF Viewer Modal
+
+PDF opens in modal with iframe (`pagos.js:872-881`):
+
+```javascript
+const blob = docPdf.output("blob");
+const url = URL.createObjectURL(blob);
+
+const modal = document.getElementById("pdfViewerModal");
+const iframe = document.getElementById("pdfViewerFrame");
+iframe.src = url;
+modal.classList.remove("hidden");
+```
+
+User can:
+- View in modal
+- Download PDF
+- Print directly from viewer
+
+## Advanced Features
+
+### Column Visibility Toggle
+
+Customize table columns (`pagos.js:597-612`):
+
+```javascript
+const columnSelectorBtn = document.getElementById("columnSelectorBtn");
+const columnSelectorMenu = document.getElementById("columnSelectorMenu");
+
+function updateColumnVisibility() {
+  const table = document.getElementById("salaryTable");
+  checkboxes.forEach(chk => {
+    const colIndex = Number(chk.dataset.col);
+    const visible = chk.checked;
+    // Toggle hidden-col class on headers and cells
+  });
+}
+```
+
+User can hide/show:
+- Salario
+- Bono
+- Deducciones
+- Detalle
+
+### Table Sorting
+
+Click column headers to sort (`pagos.js:615-636`):
+
+```javascript
+headers.forEach((th, index) => {
+  th.addEventListener("click", () => {
+    const isAsc = th.classList.contains("asc");
+    // Toggle asc/desc classes
+    rows.sort((a, b) => {
+      const A = a.children[index].innerText.trim();
+      const B = b.children[index].innerText.trim();
+      // Try numeric comparison first
+      const numA = parseFloat(A.replace(/[^0-9.-]+/g, ""));
+      const numB = parseFloat(B.replace(/[^0-9.-]+/g, ""));
+      if (!isNaN(numA) && !isNaN(numB)) 
+        return (numA - numB) * multiplier;
+      return A.localeCompare(B) * multiplier;
+    });
+  });
+});
+```
+
+### Excel Export
+
+Export payment table to Excel (`pagos.js:691-704`):
+
+```javascript
+function exportarExcel() {
+  const table = document.getElementById("salaryTable");
+  const clonedTable = table.cloneNode(true);
+  // Remove hidden columns
+  const tableHTML = clonedTable.outerHTML.replace(/ /g, '%20');
+  const nombreArchivo = `registro_pagos_${new Date().toLocaleDateString("es-PE")}.xls`;
+  const link = document.createElement("a");
+  link.href = 'data:application/vnd.ms-excel,' + tableHTML;
+  link.download = nombreArchivo;
+  link.click();
+}
+```
+
+### Table Filtering
+
+Filter by column value (`pagos.js:708-731`):
+
+```javascript
+function applyFilter() {
+  const colIndex = parseInt(document.getElementById("filterColumn").value);
+  const filterText = document.getElementById("filterText").value.toLowerCase();
+  
+  document.querySelectorAll("#salaryTable tbody tr").forEach(row => {
+    const cellValue = row.children[colIndex]?.textContent.toLowerCase() || "";
+    row.style.display = cellValue.includes(filterText) ? "" : "none";
+  });
+}
+```
+
+## Data Structures
+
+### Pagos_Empleados Collection
+
+```typescript
+interface PagoEmpleado {
+  uid: string;  // Employee user ID
+  salario: number;
+  bono: number;
+  deduccion: number;
+  pago_total: number;  // salario + bono - deduccion
+  periodo_pago: string;  // "YYYY-MM"
+  detalle: string;  // Payment notes
+  estado: "pagado" | "anulado";
+  fecha_registro: Date;
+  
+  // If voided:
+  motivo_anulacion?: string;
+  fecha_anulacion?: Date;
+}
+```
+
+### Usuario_Admin Collection (Salary Info)
+
+```typescript
+interface UsuarioAdmin {
+  uid: string;
+  salario: number;  // Monthly base salary
+  fechaIngreso: string;  // "YYYY-MM-DD"
+  fechaSalida?: string | null;
+  horas_trabajadas: number;
+  bonificaciones: number;
+  descuentos: number;
+}
+```
+
+## Helper Functions
+
+### Month Formatting
+
+```javascript
+function formatMonthName(mesYao) {
+  const [year, month] = mesYao.split('-').map(Number);
+  const meses = ["Enero", "Febrero", "Marzo", ...];
+  return `${meses[month - 1]} ${year}`;
+}
+```
+
+### Currency Formatting
+
+```javascript
+function formatearSoles(valor) {
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency: "PEN"
+  }).format(valor);
+}
+// Output: "S/ 1,500.00"
+```
+
+### Animated Card Values
+
+```javascript
+function animateValue(el, start, end, duration = 550) {
+  let startTS = null;
+  const step = timestamp => {
+    if (!startTS) startTS = timestamp;
+    const progress = Math.min((timestamp - startTS) / duration, 1);
+    el.textContent = formatearSoles(
+      Math.floor(progress * (end - start) + start)
+    );
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Period Lock" icon="lock">
+    Once all employees are paid for a period, consider it "closed" to avoid duplicate payments
+  </Card>
+  <Card title="Salary Verification" icon="check-double">
+    Always verify base salary loads correctly before adding bonuses/deductions
+  </Card>
+  <Card title="Void Reasons" icon="message">
+    Provide clear void reasons for audit compliance and future reference
+  </Card>
+  <Card title="Pay Slip Archive" icon="folder">
+    Employees can request pay slips anytime - PDFs are generated on-demand
+  </Card>
+</CardGroup>
+
+## Common Workflows
+
+### Processing Monthly Payroll
+
+<Steps>
+  <Step title="Select Current Month">
+    Change month filter to current period (e.g., "Marzo 2026")
+  </Step>
+  
+  <Step title="Verify Active Employees">
+    Check "Salario Pendiente" card to see how many employees need payment
+  </Step>
+  
+  <Step title="Process Each Employee">
+    Click **Agregar Pago** for each employee:
+    - Select period (should be current month)
+    - Select employee
+    - Verify auto-loaded salary
+    - Add bonuses/deductions if applicable
+    - Add notes
+    - Save
+  </Step>
+  
+  <Step title="Verify Completion">
+    When all employees are paid, "Salario Pendiente" should be S/. 0.00
+  </Step>
+</Steps>
+
+### Correcting Payment Errors
+
+<Steps>
+  <Step title="Void Incorrect Payment">
+    Find the payment → Click void button → Enter reason (e.g., "Error en monto")
+  </Step>
+  
+  <Step title="Re-register Correctly">
+    Employee appears again in dropdown → Register with correct amounts
+  </Step>
+  
+  <Step title="Optional: Hide Voided">
+    Toggle "Mostrar anulados" off to hide the voided payment from view
+  </Step>
+</Steps>
+
+## Related Modules
+
+- [Human Resources](/features/human-resources) - Manage employee salaries
+- [Attendance](/features/attendance) - Track hours for payroll calculation
+- [Reports](/features/reports) - Generate payroll reports
+
+## Code Reference
+
+**Key Functions**:
+- `addSalaryForm.submit` - pagos.js:285
+- `cargarPagosMes()` - pagos.js:417
+- `generarComprobantePago()` - pagos.js:737
+- `anularPagoForm.submit` - pagos.js:661
+- `exportarExcel()` - pagos.js:691

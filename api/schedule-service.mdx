@@ -1,0 +1,670 @@
+---
+title: 'Schedule Service'
+description: 'Work schedule configuration and time validation service'
+icon: 'calendar-days'
+---
+
+## Overview
+
+The `ScheduleService` manages work schedules including default schedules, date-specific schedules, and time validation logic. It provides the foundation for attendance status calculation.
+
+**Location:** `public/src/modules/asistencia/services/scheduleService.js`
+
+---
+
+## Schedule Queries
+
+### getScheduleForDate()
+
+Retrieves the schedule for a specific date. Falls back to default schedule if no date-specific schedule exists.
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+**Returns:** Schedule object or default schedule
+
+<ResponseField name="id" type="string">
+  Firestore document ID (if exists)
+</ResponseField>
+
+<ResponseField name="date" type="string">
+  Date (YYYY-MM-DD) - only for date-specific schedules
+</ResponseField>
+
+<ResponseField name="entryTime" type="string">
+  Expected check-in time (HH:MM format)
+</ResponseField>
+
+<ResponseField name="exitTime" type="string">
+  Expected check-out time (HH:MM format)
+</ResponseField>
+
+<ResponseField name="toleranceMinutes" type="number">
+  Allowed minutes before/after scheduled time
+</ResponseField>
+
+<ResponseField name="workHours" type="number">
+  Expected work hours per day
+</ResponseField>
+
+<ResponseField name="isDefault" type="boolean">
+  True if this is the default schedule
+</ResponseField>
+
+<ResponseField name="appliesTo" type="string">
+  "all" or specific employee IDs
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+import scheduleService from './scheduleService.js';
+
+const schedule = await scheduleService.getScheduleForDate('2024-03-15');
+
+console.log('Entry time:', schedule.entryTime);
+console.log('Exit time:', schedule.exitTime);
+console.log('Tolerance:', schedule.toleranceMinutes, 'minutes');
+console.log('Work hours:', schedule.workHours);
+```
+
+```javascript Response (Date-Specific Schedule)
+{
+  id: 'schedule123',
+  date: '2024-03-15',
+  entryTime: '09:00',
+  exitTime: '18:00',
+  toleranceMinutes: 10,
+  workHours: 9,
+  appliesTo: 'all',
+  isDefault: false,
+  setBy: 'admin123',
+  updatedAt: Timestamp
+}
+```
+
+```javascript Response (Default Schedule)
+{
+  entryTime: '08:00',
+  exitTime: '17:00',
+  toleranceMinutes: 15,
+  workHours: 8
+}
+```
+</CodeGroup>
+
+---
+
+### getDefaultSchedule()
+
+Retrieves the default work schedule applied when no date-specific schedule exists.
+
+**Returns:** Default schedule object
+
+<CodeGroup>
+```javascript Example Usage
+const defaultSchedule = await scheduleService.getDefaultSchedule();
+
+console.log('Default entry:', defaultSchedule.entryTime);
+console.log('Default exit:', defaultSchedule.exitTime);
+```
+
+```javascript Response (From Database)
+{
+  id: 'default_schedule',
+  entryTime: '08:00',
+  exitTime: '17:00',
+  toleranceMinutes: 15,
+  workHours: 8,
+  isDefault: true,
+  appliesTo: 'all',
+  setBy: 'system',
+  updatedAt: Timestamp
+}
+```
+
+```javascript Response (Fallback)
+{
+  entryTime: '08:00',
+  exitTime: '17:00',
+  toleranceMinutes: 15,
+  workHours: 8
+}
+```
+</CodeGroup>
+
+---
+
+### getCustomSchedules()
+
+Retrieves all custom (non-default) schedules, optionally filtered by date range.
+
+<ParamField path="startDate" type="string">
+  Optional start date (YYYY-MM-DD)
+</ParamField>
+
+<ParamField path="endDate" type="string">
+  Optional end date (YYYY-MM-DD)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of custom schedule objects, ordered by date (descending)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage (All Custom Schedules)
+const result = await scheduleService.getCustomSchedules();
+
+if (result.success) {
+  console.log(`Found ${result.data.length} custom schedules`);
+  
+  result.data.forEach(schedule => {
+    console.log(`${schedule.date}: ${schedule.entryTime} - ${schedule.exitTime}`);
+  });
+}
+```
+
+```javascript Example Usage (Date Range)
+const result = await scheduleService.getCustomSchedules(
+  '2024-03-01',
+  '2024-03-31'
+);
+
+console.log(`Custom schedules in March:`, result.data.length);
+```
+
+```javascript Response
+{
+  success: true,
+  data: [
+    {
+      id: 'sched1',
+      date: '2024-03-15',
+      entryTime: '09:00',
+      exitTime: '18:00',
+      toleranceMinutes: 10,
+      workHours: 9,
+      appliesTo: 'all',
+      isDefault: false
+    },
+    {
+      id: 'sched2',
+      date: '2024-03-10',
+      entryTime: '07:00',
+      exitTime: '15:00',
+      toleranceMinutes: 15,
+      workHours: 7,
+      appliesTo: 'all',
+      isDefault: false
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+## Schedule Configuration
+
+### setScheduleForDate()
+
+Configures a schedule for a specific date. Creates a new schedule or updates an existing one.
+
+<ParamField path="adminId" type="string" required>
+  Administrator user ID setting the schedule
+</ParamField>
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="entryTime" type="string" required>
+  Check-in time in HH:MM format (24-hour)
+</ParamField>
+
+<ParamField path="exitTime" type="string" required>
+  Check-out time in HH:MM format (24-hour)
+</ParamField>
+
+<ParamField path="toleranceMinutes" type="number" default="15">
+  Tolerance in minutes for early/late arrival
+</ParamField>
+
+<ParamField path="appliesTo" type="string" default="all">
+  Who this schedule applies to ("all" or specific user IDs)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Firestore document ID of the created/updated schedule
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if failed
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage (Single Day)
+const result = await scheduleService.setScheduleForDate(
+  'admin123',
+  '2024-03-20',
+  '09:00',
+  '18:00',
+  10,
+  'all'
+);
+
+if (result.success) {
+  console.log('Schedule created with ID:', result.id);
+}
+```
+
+```javascript Example Usage (Holiday Schedule)
+const result = await scheduleService.setScheduleForDate(
+  'admin123',
+  '2024-12-25',
+  '10:00',
+  '14:00',
+  30,
+  'all'
+);
+
+if (result.success) {
+  console.log('Holiday schedule set');
+}
+```
+
+```javascript Response
+{
+  success: true,
+  id: 'schedule456'
+}
+```
+</CodeGroup>
+
+<Note>
+  The service automatically calculates `workHours` based on the time difference between `entryTime` and `exitTime`.
+</Note>
+
+---
+
+### setDefaultSchedule()
+
+Configures the default work schedule applied to all days without specific schedules.
+
+<ParamField path="adminId" type="string" required>
+  Administrator user ID setting the default schedule
+</ParamField>
+
+<ParamField path="entryTime" type="string" required>
+  Default check-in time (HH:MM format)
+</ParamField>
+
+<ParamField path="exitTime" type="string" required>
+  Default check-out time (HH:MM format)
+</ParamField>
+
+<ParamField path="toleranceMinutes" type="number" default="15">
+  Default tolerance in minutes
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Firestore document ID of the default schedule
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await scheduleService.setDefaultSchedule(
+  'admin123',
+  '08:00',
+  '17:00',
+  15
+);
+
+if (result.success) {
+  console.log('Default schedule updated');
+}
+```
+
+```javascript Example Usage (Flexible Schedule)
+const result = await scheduleService.setDefaultSchedule(
+  'admin123',
+  '09:00',
+  '18:00',
+  30  // More flexible tolerance
+);
+```
+
+```javascript Response
+{
+  success: true,
+  id: 'default_schedule_789'
+}
+```
+</CodeGroup>
+
+---
+
+## Time Validation
+
+### isLate()
+
+Checks if an actual time is considered late compared to the scheduled time.
+
+<ParamField path="actualTime" type="string" required>
+  Actual time in HH:MM format
+</ParamField>
+
+<ParamField path="scheduledTime" type="string" required>
+  Scheduled time in HH:MM format
+</ParamField>
+
+<ParamField path="toleranceMinutes" type="number" required>
+  Tolerance in minutes
+</ParamField>
+
+**Returns:** `true` if late, `false` otherwise
+
+<CodeGroup>
+```javascript Example Usage
+const late = scheduleService.isLate('08:20', '08:00', 15);
+console.log('Is late?', late); // false (within tolerance)
+
+const veryLate = scheduleService.isLate('08:30', '08:00', 15);
+console.log('Is late?', veryLate); // true (exceeds tolerance)
+```
+
+```javascript Practical Example
+const schedule = await scheduleService.getScheduleForDate('2024-03-15');
+const actualArrival = '08:25';
+
+if (scheduleService.isLate(
+  actualArrival,
+  schedule.entryTime,
+  schedule.toleranceMinutes
+)) {
+  console.log('Employee arrived late');
+  // Send notification or mark as late
+}
+```
+</CodeGroup>
+
+---
+
+### isEarly()
+
+Checks if an actual time is considered early compared to the scheduled time.
+
+<ParamField path="actualTime" type="string" required>
+  Actual time in HH:MM format
+</ParamField>
+
+<ParamField path="scheduledTime" type="string" required>
+  Scheduled time in HH:MM format
+</ParamField>
+
+<ParamField path="toleranceMinutes" type="number" required>
+  Tolerance in minutes
+</ParamField>
+
+**Returns:** `true` if early, `false` otherwise
+
+<CodeGroup>
+```javascript Example Usage
+const early = scheduleService.isEarly('07:30', '08:00', 15);
+console.log('Is early?', early); // true (more than 15 min early)
+
+const onTime = scheduleService.isEarly('07:50', '08:00', 15);
+console.log('Is early?', onTime); // false (within tolerance)
+```
+
+```javascript Check Exit Time
+const schedule = await scheduleService.getScheduleForDate('2024-03-15');
+const actualExit = '16:30';
+
+if (scheduleService.isEarly(
+  actualExit,
+  schedule.exitTime,
+  schedule.toleranceMinutes
+)) {
+  console.log('Employee left early');
+}
+```
+</CodeGroup>
+
+---
+
+### getTimeDifference()
+
+Calculates the difference in minutes between two times.
+
+<ParamField path="time1" type="string" required>
+  First time in HH:MM format
+</ParamField>
+
+<ParamField path="time2" type="string" required>
+  Second time in HH:MM format
+</ParamField>
+
+**Returns:** Number of minutes (positive if time1 > time2, negative if time1 < time2)
+
+<CodeGroup>
+```javascript Example Usage
+const diff = scheduleService.getTimeDifference('08:30', '08:00');
+console.log('Difference:', diff, 'minutes'); // 30
+
+const negDiff = scheduleService.getTimeDifference('07:45', '08:00');
+console.log('Difference:', negDiff, 'minutes'); // -15
+```
+
+```javascript Calculate Lateness
+const schedule = await scheduleService.getScheduleForDate('2024-03-15');
+const actualArrival = '08:25';
+
+const minutesLate = scheduleService.getTimeDifference(
+  actualArrival,
+  schedule.entryTime
+);
+
+if (minutesLate > 0) {
+  console.log(`Employee was ${minutesLate} minutes late`);
+} else if (minutesLate < 0) {
+  console.log(`Employee arrived ${Math.abs(minutesLate)} minutes early`);
+} else {
+  console.log('Employee arrived exactly on time');
+}
+```
+</CodeGroup>
+
+---
+
+## Default Schedule Constant
+
+### DEFAULT_SCHEDULE
+
+The hardcoded fallback schedule used when no database schedule is found.
+
+<CodeGroup>
+```javascript Default Values
+const DEFAULT_SCHEDULE = {
+  entryTime: '08:00',
+  exitTime: '17:00',
+  toleranceMinutes: 15,
+  workHours: 8
+};
+```
+
+```javascript Usage
+import scheduleService from './scheduleService.js';
+
+console.log('Fallback schedule:', scheduleService.DEFAULT_SCHEDULE);
+```
+</CodeGroup>
+
+---
+
+## Schedule Data Structure
+
+### Firestore Collection: `schedules`
+
+<ResponseField name="id" type="string">
+  Firestore document ID
+</ResponseField>
+
+<ResponseField name="date" type="string">
+  Specific date (YYYY-MM-DD) - omitted for default schedule
+</ResponseField>
+
+<ResponseField name="entryTime" type="string">
+  Expected check-in time (HH:MM)
+</ResponseField>
+
+<ResponseField name="exitTime" type="string">
+  Expected check-out time (HH:MM)
+</ResponseField>
+
+<ResponseField name="toleranceMinutes" type="number">
+  Allowed minutes before/after scheduled time
+</ResponseField>
+
+<ResponseField name="workHours" type="number">
+  Calculated work hours (auto-computed)
+</ResponseField>
+
+<ResponseField name="isDefault" type="boolean">
+  True if this is the default schedule
+</ResponseField>
+
+<ResponseField name="appliesTo" type="string">
+  "all" for everyone, or comma-separated user IDs
+</ResponseField>
+
+<ResponseField name="setBy" type="string">
+  Administrator user ID who created/updated this schedule
+</ResponseField>
+
+<ResponseField name="createdAt" type="Timestamp">
+  Firestore server timestamp of creation
+</ResponseField>
+
+<ResponseField name="updatedAt" type="Timestamp">
+  Firestore server timestamp of last update
+</ResponseField>
+
+---
+
+## Use Cases
+
+### Setting Up Weekly Schedule
+
+<CodeGroup>
+```javascript Monday to Friday
+const days = ['2024-03-18', '2024-03-19', '2024-03-20', '2024-03-21', '2024-03-22'];
+
+for (const day of days) {
+  await scheduleService.setScheduleForDate(
+    'admin123',
+    day,
+    '08:00',
+    '17:00',
+    15
+  );
+}
+
+console.log('Weekly schedule configured');
+```
+
+```javascript Weekend Schedule
+await scheduleService.setScheduleForDate(
+  'admin123',
+  '2024-03-23', // Saturday
+  '09:00',
+  '13:00',
+  30
+);
+
+console.log('Saturday schedule set');
+```
+</CodeGroup>
+
+### Validating Attendance Time
+
+<CodeGroup>
+```javascript Complete Validation
+const date = '2024-03-15';
+const actualTime = '08:25';
+const schedule = await scheduleService.getScheduleForDate(date);
+
+const diff = scheduleService.getTimeDifference(
+  actualTime,
+  schedule.entryTime
+);
+
+let status;
+if (Math.abs(diff) <= schedule.toleranceMinutes) {
+  status = 'on-time';
+} else if (diff > schedule.toleranceMinutes) {
+  status = 'late';
+} else {
+  status = 'early';
+}
+
+console.log(`Status: ${status}`);
+console.log(`Difference: ${diff} minutes`);
+```
+</CodeGroup>
+
+### Displaying Schedule to Users
+
+<CodeGroup>
+```javascript Display Today's Schedule
+const today = new Date().toISOString().split('T')[0];
+const schedule = await scheduleService.getScheduleForDate(today);
+
+console.log(`Today's Schedule:`);
+console.log(`Entry: ${schedule.entryTime}`);
+console.log(`Exit: ${schedule.exitTime}`);
+console.log(`Work Hours: ${schedule.workHours}`);
+console.log(`Tolerance: ±${schedule.toleranceMinutes} minutes`);
+```
+</CodeGroup>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Date-Specific Schedules" icon="calendar-day">
+    Configure schedules for holidays, special events, or shifts
+  </Card>
+  
+  <Card title="Set Reasonable Tolerance" icon="clock">
+    15 minutes is a good default, adjust based on business needs
+  </Card>
+  
+  <Card title="Calculate Work Hours" icon="calculator">
+    Service auto-calculates workHours from entry/exit times
+  </Card>
+  
+  <Card title="Always Get Schedule First" icon="arrows-rotate">
+    Use getScheduleForDate() before validating attendance times
+  </Card>
+</CardGroup>
+
+---
+
+## Related Services
+
+- [Attendance Service](/api/attendance-service) - Uses schedules to validate attendance
+- [Database Schema](/api/database-schema) - Firestore collections and document structures

@@ -1,0 +1,677 @@
+---
+title: 'Attendance Service'
+description: 'Complete attendance management with check-in/check-out, validation, and reporting'
+icon: 'clock'
+---
+
+## Overview
+
+The `AttendanceService` manages employee attendance records including automatic time tracking, schedule validation, daily summaries, and attendance history. It integrates with `ScheduleService` for schedule validation.
+
+**Location:** `public/src/modules/asistencia/services/attendanceService.js`
+
+---
+
+## Attendance Registration
+
+### markAttendance()
+
+Records employee check-in or check-out with automatic timestamp and status validation.
+
+<ParamField path="userId" type="string" required>
+  Employee user ID
+</ParamField>
+
+<ParamField path="userEmail" type="string" required>
+  Employee email address
+</ParamField>
+
+<ParamField path="displayName" type="string" required>
+  Employee display name
+</ParamField>
+
+<ParamField path="role" type="string" required>
+  Employee role
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Attendance type: `"entrada"` (check-in) or `"salida"` (check-out)
+</ParamField>
+
+<ParamField path="notes" type="string" default="">
+  Optional notes for this attendance record
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Indicates if attendance was recorded successfully
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Created attendance record
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      Firestore document ID
+    </ResponseField>
+    
+    <ResponseField name="userId" type="string">
+      Employee ID
+    </ResponseField>
+    
+    <ResponseField name="date" type="string">
+      Date in YYYY-MM-DD format
+    </ResponseField>
+    
+    <ResponseField name="timestamp" type="Timestamp">
+      Firestore timestamp of the record
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      "entrada" or "salida"
+    </ResponseField>
+    
+    <ResponseField name="actualTime" type="string">
+      Actual check-in/out time (HH:MM format)
+    </ResponseField>
+    
+    <ResponseField name="scheduledTime" type="string">
+      Expected time based on schedule
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      "on-time", "late", or "early"
+    </ResponseField>
+    
+    <ResponseField name="minutesDifference" type="number">
+      Minutes difference from scheduled time (positive = late, negative = early)
+    </ResponseField>
+    
+    <ResponseField name="source" type="string">
+      "self" for employee self-registration
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if failed
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage (Check-In)
+import attendanceService from './attendanceService.js';
+
+const session = authService.getSession();
+
+const result = await attendanceService.markAttendance(
+  session.uid,
+  session.email,
+  session.displayName,
+  session.rol,
+  'entrada',
+  'On time today'
+);
+
+if (result.success) {
+  console.log('Check-in recorded:', result.data);
+  console.log('Status:', result.data.status);
+  console.log('Time:', result.data.actualTime);
+} else {
+  console.error('Error:', result.error);
+}
+```
+
+```javascript Response (Success)
+{
+  success: true,
+  data: {
+    id: 'attendance123',
+    userId: 'user123',
+    userEmail: 'john@example.com',
+    displayName: 'John Doe',
+    role: 'Empleado',
+    date: '2024-03-15',
+    timestamp: Timestamp,
+    type: 'entrada',
+    actualTime: '08:05',
+    scheduledTime: '08:00',
+    status: 'on-time',
+    minutesDifference: 5,
+    source: 'self',
+    notes: 'On time today',
+    createdAt: Timestamp,
+    updatedAt: Timestamp
+  }
+}
+```
+
+```javascript Response (Already Marked)
+{
+  success: false,
+  error: 'Ya has marcado entrada hoy'
+}
+```
+</CodeGroup>
+
+---
+
+### registerManualAttendance()
+
+Allows administrators to manually register attendance for employees with a specific date and time.
+
+<ParamField path="adminId" type="string" required>
+  Administrator user ID performing the registration
+</ParamField>
+
+<ParamField path="employeeData" type="object" required>
+  Employee information
+  
+  <Expandable title="properties">
+    <ParamField path="userId" type="string" required>
+      Employee user ID
+    </ParamField>
+    
+    <ParamField path="email" type="string" required>
+      Employee email
+    </ParamField>
+    
+    <ParamField path="displayName" type="string" required>
+      Employee name
+    </ParamField>
+    
+    <ParamField path="role" type="string" required>
+      Employee role
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="time" type="string" required>
+  Time in HH:MM format (24-hour)
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  "entrada" or "salida"
+</ParamField>
+
+<ParamField path="notes" type="string" default="">
+  Optional notes
+</ParamField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.registerManualAttendance(
+  'admin123',
+  {
+    userId: 'employee456',
+    email: 'employee@example.com',
+    displayName: 'Jane Smith',
+    role: 'Empleado'
+  },
+  '2024-03-14',
+  '08:00',
+  'entrada',
+  'Retroactive entry registered by admin'
+);
+
+if (result.success) {
+  console.log('Manual attendance recorded:', result.data.id);
+}
+```
+
+```javascript Response
+{
+  success: true,
+  data: {
+    id: 'attendance789',
+    userId: 'employee456',
+    date: '2024-03-14',
+    timestamp: Timestamp,
+    type: 'entrada',
+    actualTime: '08:00',
+    status: 'on-time',
+    source: 'manual',
+    registeredBy: 'admin123',
+    notes: 'Retroactive entry registered by admin'
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Attendance Queries
+
+### getTodayAttendances()
+
+Retrieves all attendance records for the current day.
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of attendance records for today
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.getTodayAttendances();
+
+if (result.success) {
+  console.log(`Found ${result.data.length} attendance records today`);
+  
+  result.data.forEach(att => {
+    console.log(`${att.displayName}: ${att.type} at ${att.actualTime}`);
+  });
+}
+```
+
+```javascript Response
+{
+  success: true,
+  data: [
+    {
+      id: 'att1',
+      userId: 'user1',
+      displayName: 'John Doe',
+      type: 'entrada',
+      actualTime: '08:05',
+      status: 'on-time',
+      date: '2024-03-15'
+    },
+    {
+      id: 'att2',
+      userId: 'user2',
+      displayName: 'Jane Smith',
+      type: 'entrada',
+      actualTime: '08:20',
+      status: 'late',
+      date: '2024-03-15'
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+### getAttendancesByDate()
+
+Retrieves all attendance records for a specific date.
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.getAttendancesByDate('2024-03-14');
+
+if (result.success) {
+  console.log(`Attendances on March 14:`, result.data.length);
+}
+```
+</CodeGroup>
+
+---
+
+### getUserAttendances()
+
+Retrieves attendance records for a specific employee within a date range.
+
+<ParamField path="userId" type="string" required>
+  Employee user ID
+</ParamField>
+
+<ParamField path="startDate" type="string" required>
+  Start date (YYYY-MM-DD)
+</ParamField>
+
+<ParamField path="endDate" type="string" required>
+  End date (YYYY-MM-DD)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of attendance records, ordered by date (descending)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.getUserAttendances(
+  'user123',
+  '2024-03-01',
+  '2024-03-31'
+);
+
+if (result.success) {
+  console.log(`Found ${result.data.length} records for March`);
+  
+  // Group by date
+  const byDate = {};
+  result.data.forEach(att => {
+    if (!byDate[att.date]) byDate[att.date] = [];
+    byDate[att.date].push(att);
+  });
+  
+  Object.keys(byDate).forEach(date => {
+    const records = byDate[date];
+    console.log(`${date}: ${records.length} records`);
+  });
+}
+```
+
+```javascript Response
+{
+  success: true,
+  data: [
+    {
+      id: 'att1',
+      userId: 'user123',
+      date: '2024-03-15',
+      type: 'entrada',
+      actualTime: '08:05',
+      status: 'on-time'
+    },
+    {
+      id: 'att2',
+      userId: 'user123',
+      date: '2024-03-15',
+      type: 'salida',
+      actualTime: '17:00',
+      status: 'on-time'
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+### getDailySummary()
+
+Retrieves the daily summary for a specific employee and date.
+
+<ParamField path="userId" type="string" required>
+  Employee user ID
+</ParamField>
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Daily summary data
+  
+  <Expandable title="properties">
+    <ResponseField name="userId" type="string">
+      Employee ID
+    </ResponseField>
+    
+    <ResponseField name="date" type="string">
+      Date (YYYY-MM-DD)
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Employee name
+    </ResponseField>
+    
+    <ResponseField name="checkIn" type="Timestamp">
+      Check-in timestamp (if exists)
+    </ResponseField>
+    
+    <ResponseField name="checkOut" type="Timestamp">
+      Check-out timestamp (if exists)
+    </ResponseField>
+    
+    <ResponseField name="hoursWorked" type="number">
+      Total hours worked
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      "complete", "incomplete", or "absent"
+    </ResponseField>
+    
+    <ResponseField name="wasLate" type="boolean">
+      True if employee was late
+    </ResponseField>
+    
+    <ResponseField name="leftEarly" type="boolean">
+      True if employee left early
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.getDailySummary(
+  'user123',
+  '2024-03-15'
+);
+
+if (result.success) {
+  const summary = result.data;
+  console.log(`Status: ${summary.status}`);
+  console.log(`Hours worked: ${summary.hoursWorked}`);
+  console.log(`Was late: ${summary.wasLate}`);
+}
+```
+
+```javascript Response
+{
+  success: true,
+  data: {
+    userId: 'user123',
+    date: '2024-03-15',
+    displayName: 'John Doe',
+    checkIn: Timestamp,
+    checkOut: Timestamp,
+    hoursWorked: 8.5,
+    status: 'complete',
+    wasLate: false,
+    leftEarly: false,
+    lastUpdated: Timestamp
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Attendance Updates
+
+### updateAttendance()
+
+Updates an existing attendance record. Creates an edit history entry.
+
+<ParamField path="attendanceId" type="string" required>
+  Firestore document ID of the attendance record
+</ParamField>
+
+<ParamField path="updates" type="object" required>
+  Fields to update (e.g., actualTime, notes, status)
+</ParamField>
+
+<ParamField path="adminId" type="string" required>
+  Administrator ID performing the update
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Operation success status
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await attendanceService.updateAttendance(
+  'attendance123',
+  {
+    actualTime: '08:10',
+    notes: 'Corrected time after review'
+  },
+  'admin456'
+);
+
+if (result.success) {
+  console.log('Attendance updated successfully');
+  // Daily summary is automatically recalculated
+}
+```
+
+```javascript Response
+{
+  success: true
+}
+```
+</CodeGroup>
+
+<Note>
+  When `actualTime` is updated, the service automatically recalculates the status (on-time/late/early) and updates the timestamp.
+</Note>
+
+---
+
+## Utility Functions
+
+### checkIfAlreadyMarked()
+
+Checks if an employee has already marked attendance for a specific type on a given date.
+
+<ParamField path="userId" type="string" required>
+  Employee user ID
+</ParamField>
+
+<ParamField path="date" type="string" required>
+  Date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  "entrada" or "salida"
+</ParamField>
+
+**Returns:** `true` if already marked, `false` otherwise
+
+<CodeGroup>
+```javascript Example Usage
+const alreadyMarked = await attendanceService.checkIfAlreadyMarked(
+  'user123',
+  '2024-03-15',
+  'entrada'
+);
+
+if (alreadyMarked) {
+  console.log('Employee already checked in today');
+}
+```
+</CodeGroup>
+
+---
+
+### formatDate()
+
+Formats a Date object to YYYY-MM-DD string.
+
+<ParamField path="date" type="Date" required>
+  Date object to format
+</ParamField>
+
+**Returns:** String in YYYY-MM-DD format
+
+<CodeGroup>
+```javascript Example Usage
+const today = attendanceService.formatDate(new Date());
+console.log(today); // "2024-03-15"
+```
+</CodeGroup>
+
+---
+
+### formatTime()
+
+Formats a Date object to HH:MM string (24-hour format).
+
+<ParamField path="date" type="Date" required>
+  Date object to format
+</ParamField>
+
+**Returns:** String in HH:MM format
+
+<CodeGroup>
+```javascript Example Usage
+const currentTime = attendanceService.formatTime(new Date());
+console.log(currentTime); // "08:30"
+```
+</CodeGroup>
+
+---
+
+## Attendance Status Values
+
+The service uses the following status values for attendance validation:
+
+| Status | Description | When Applied |
+|--------|-------------|-------------|
+| `on-time` | Arrived/left within tolerance | Difference ≤ tolerance minutes |
+| `late` | Arrived late or left late | For entrada: arrived after scheduled + tolerance<br/>For salida: left after scheduled + tolerance |
+| `early` | Arrived early or left early | For entrada: arrived before scheduled - tolerance<br/>For salida: left before scheduled - tolerance |
+
+<Note>
+  The tolerance is defined in the schedule (default: 15 minutes). See [Schedule Service](/api/schedule-service) for details.
+</Note>
+
+---
+
+## Attendance Source Types
+
+| Source | Description |
+|--------|-------------|
+| `self` | Employee self-registered via the attendance module |
+| `manual` | Administrator manually registered the attendance |
+
+---
+
+## Daily Summary Status Values
+
+| Status | Description |
+|--------|-------------|
+| `complete` | Both check-in and check-out recorded |
+| `incomplete` | Only check-in or check-out recorded |
+| `absent` | No attendance records for the day |
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Validate Before Marking" icon="check-double">
+    Always check if attendance is already marked to prevent duplicates
+  </Card>
+  
+  <Card title="Handle Late Arrivals" icon="clock">
+    Display the status and minutesDifference to inform employees
+  </Card>
+  
+  <Card title="Use Daily Summaries" icon="chart-simple">
+    Query daily summaries for reporting instead of raw attendance records
+  </Card>
+  
+  <Card title="Track Edit History" icon="clock-rotate-left">
+    Manual edits are automatically tracked with timestamps and admin IDs
+  </Card>
+</CardGroup>
+
+---
+
+## Related Services
+
+- [Schedule Service](/api/schedule-service) - Configure work schedules and validation rules
+- [Database Schema](/api/database-schema) - Firestore collections and document structures

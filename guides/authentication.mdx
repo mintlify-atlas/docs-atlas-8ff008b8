@@ -1,0 +1,621 @@
+---
+title: 'Authentication Guide'
+description: 'Complete guide to login, registration, roles, permissions, and session management in TextileFlow ERP'
+icon: 'lock'
+---
+
+This guide covers the authentication system in TextileFlow ERP, including login procedures, user roles, permissions, and session management.
+
+## Authentication Overview
+
+TextileFlow ERP uses Firebase Authentication for secure user management. The system implements role-based access control (RBAC) to ensure users only access features appropriate to their role.
+
+### Authentication Features
+
+- Email and password authentication
+- Role-based access control (Admin, Employee, Client)
+- Session persistence with localStorage
+- Password reset functionality
+- Automatic role-based redirects
+- Session protection and tampering detection
+
+## User Roles
+
+TextileFlow ERP supports three primary user roles:
+
+<AccordionGroup>
+  <Accordion title="Administrador (Administrator)" icon="user-shield">
+    **Full system access including:**
+    - User management (create, edit, delete users)
+    - Inventory control (categories, products, stock)
+    - Sales management (record and track sales)
+    - Attendance management (view all employees, manual entry)
+    - Payroll processing (generate and manage payments)
+    - Reports and analytics (all modules)
+    - System configuration
+    
+    **Access Pages:**
+    - `/admin/dashboard.html`
+    - `/admin/rrhh.html`
+    - `/admin/inventario.html`
+    - `/admin/ventas.html`
+    - `/admin/asistencia.html`
+    - `/admin/pagos.html`
+    - `/admin/reportes.html`
+    - `/admin/configuracion.html`
+  </Accordion>
+  
+  <Accordion title="Empleado (Employee)" icon="user">
+    **Limited access to personal features:**
+    - Personal dashboard
+    - Attendance tracking (mark own entry/exit)
+    - Payment history (view own payments)
+    - Profile management (edit own information)
+    
+    **Access Pages:**
+    - `/employee/dashboard.html`
+    - `/employee/asistencias.html`
+    - `/employee/payments.html`
+    - `/employee/profile.html`
+    
+    **Default Permissions:**
+    - `read` - Can view own data
+  </Accordion>
+  
+  <Accordion title="Cliente (Client)" icon="user-tie">
+    **Customer-facing features:**
+    - View purchase history
+    - Track orders
+    - Update contact information
+    
+    **Note:** Client role is primarily for customer database management by administrators.
+  </Accordion>
+</AccordionGroup>
+
+## Login Process
+
+### Standard Login
+
+Access the system through the login page at `/pages/login.html`.
+
+<Steps>
+  <Step title="Access login page">
+    Navigate to the TextileFlow login page. If you have an active session, you'll be automatically redirected to your dashboard.
+  </Step>
+  
+  <Step title="Enter credentials">
+    Provide your credentials:
+    - **Correo Electrónico** - Your registered email address
+    - **Contraseña** - Your password
+    
+    Optional: Check "Recuérdame" to persist your session longer.
+  </Step>
+  
+  <Step title="Submit login">
+    Click "Iniciar Sesión". The system will:
+    1. Authenticate credentials with Firebase Auth
+    2. Retrieve user data from Firestore `usuario` collection
+    3. Create session in localStorage
+    4. Redirect based on role
+  </Step>
+  
+  <Step title="Automatic redirect">
+    Upon successful login:
+    - **Admins** → `/admin/dashboard.html`
+    - **Employees** → `/employee/dashboard.html`
+  </Step>
+</Steps>
+
+### Login Form Fields
+
+```javascript
+// Login form structure
+{
+  email: "user@example.com",      // Required
+  password: "userPassword123",     // Required
+  rememberMe: true                 // Optional
+}
+```
+
+### Authentication Flow
+
+The `authService.login()` method in `/src/auth/services/authService.js` handles the login process:
+
+<Steps>
+  <Step title="Firebase authentication">
+    ```javascript
+    signInWithEmailAndPassword(auth, email, password)
+    ```
+    Authenticates user credentials with Firebase Auth.
+  </Step>
+  
+  <Step title="Fetch user data">
+    ```javascript
+    getDoc(doc(db, 'usuario', user.uid))
+    ```
+    Retrieves complete user profile from Firestore.
+  </Step>
+  
+  <Step title="Build user object">
+    Constructs user data object including:
+    - uid (unique identifier)
+    - email
+    - nombre (first name)
+    - apellido (last name)
+    - displayName (full name)
+    - rol (role: Administrador/Empleado)
+    - Additional Firestore fields
+  </Step>
+  
+  <Step title="Save session">
+    ```javascript
+    saveSession(user, userData)
+    ```
+    Stores session in localStorage with key `textileflow_session`.
+  </Step>
+  
+  <Step title="Update auth store">
+    ```javascript
+    authStore.setUser(user, userData.rol, userData.permissions)
+    ```
+    Updates application state with user information.
+  </Step>
+</Steps>
+
+## Session Management
+
+### Session Storage
+
+Session data is stored in `localStorage` with the key `textileflow_session`:
+
+```javascript
+{
+  uid: "firebase-user-id",
+  email: "user@example.com",
+  nombre: "Juan",
+  apellido: "Pérez",
+  displayName: "Juan Pérez",
+  rol: "Empleado",
+  permissions: ["read"],
+  timestamp: 1709856000000
+}
+```
+
+### Session Validation
+
+The `AuthGuard` class in `/src/auth/guards/authGuard.js` provides session validation:
+
+<Tabs>
+  <Tab title="isAuthenticated()">
+    Checks if user has a valid session:
+    ```javascript
+    static isAuthenticated() {
+      const session = authService.getSession();
+      return session !== null && authService.isAuthenticated();
+    }
+    ```
+  </Tab>
+  
+  <Tab title="hasRole(role)">
+    Verifies user has a specific role:
+    ```javascript
+    static hasRole(role) {
+      const state = authStore.getState();
+      return state.userRole === role;
+    }
+    ```
+  </Tab>
+  
+  <Tab title="hasPermission(permission)">
+    Checks if user has a specific permission:
+    ```javascript
+    static hasPermission(permission) {
+      return authStore.hasPermission(permission);
+    }
+    ```
+  </Tab>
+  
+  <Tab title="canActivate()">
+    Comprehensive access check:
+    ```javascript
+    static canActivate(requiredRole, requiredPermissions) {
+      // Checks authentication, role, and permissions
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Session Protection
+
+The system includes `sessionProtection.js` that monitors:
+
+- **Tab visibility changes** - Detects when user switches tabs
+- **Window focus** - Tracks when window loses focus
+- **Storage events** - Detects session tampering
+- **Manual logout triggers** - Handles cleanup on logout
+
+<Warning>
+  Tampering with localStorage session data will trigger automatic logout and redirect to the login page.
+</Warning>
+
+## User Registration
+
+New users are registered through two methods:
+
+### Admin Registration
+
+Administrators create users through `/admin/rrhh.html`:
+
+<Steps>
+  <Step title="Open user modal">
+    Click "Agregar Usuario" in the RRHH module.
+  </Step>
+  
+  <Step title="Fill user form">
+    Complete all required fields:
+    - Tipo de Documento (CC, CE, DNI, PA, RUC)
+    - Número de Documento
+    - Nombre
+    - Apellido
+    - Email (must be unique)
+    - Rol (Empleado, Administrador, Cliente)
+    - Contraseña
+    - Teléfono (optional)
+    - Dirección (optional)
+  </Step>
+  
+  <Step title="Create user account">
+    System creates:
+    1. Firebase Auth account
+    2. Firestore document in `usuario` collection
+    3. Sets role and permissions
+  </Step>
+</Steps>
+
+### Self Registration
+
+The `authService.register()` method handles user registration:
+
+```javascript
+{
+  email: "user@example.com",
+  password: "securePassword123",
+  fullName: "Juan Pérez",
+  company: "JOAR'S",
+  phone: "987654321",
+  newsletter: true
+}
+```
+
+**Registration Process:**
+
+1. Creates Firebase Auth account with email/password
+2. Updates profile with display name
+3. Creates Firestore document with:
+   - uid, email, displayName
+   - company, phone, newsletter preferences
+   - **Default role:** `employee`
+   - **Default permissions:** `['read']`
+   - status: `active`
+   - createdAt: timestamp
+4. Saves initial session
+
+<Note>
+  All new registrations default to the "employee" role. Only administrators can change user roles.
+</Note>
+
+## Password Management
+
+### Password Reset
+
+Users can reset forgotten passwords:
+
+<Steps>
+  <Step title="Access reset modal">
+    On the login page, click "¿Olvidaste tu contraseña?" to open the reset modal.
+  </Step>
+  
+  <Step title="Enter email">
+    Provide your registered email address in the "Correo Electrónico" field.
+  </Step>
+  
+  <Step title="Request reset link">
+    Click "Enviar enlace de recuperación". The system calls:
+    ```javascript
+    sendPasswordResetEmail(auth, email)
+    ```
+  </Step>
+  
+  <Step title="Check email">
+    Firebase sends a password reset link to your email address. Click the link to set a new password.
+  </Step>
+</Steps>
+
+### Password Change (Logged In)
+
+Users can change their password while logged in through their profile page:
+
+<Steps>
+  <Step title="Navigate to profile">
+    Go to `/employee/profile.html` (employees) or `/admin/profile.html` (admins).
+  </Step>
+  
+  <Step title="Complete password form">
+    In the "Cambiar Contraseña" section:
+    - Enter current password
+    - Enter new password (min 8 characters)
+    - Confirm new password
+  </Step>
+  
+  <Step title="Submit change">
+    Click "Cambiar Contraseña" to update. System re-authenticates before applying change.
+  </Step>
+</Steps>
+
+<Warning>
+  Password requirements:
+  - Minimum 8 characters
+  - New password must differ from current password
+  - Confirmation must match new password
+</Warning>
+
+## Access Control
+
+### Route Protection
+
+Pages implement access control using guard functions:
+
+**Admin Pages:**
+```javascript
+import { requireAdmin } from '../../components/auth-guard.js';
+requireAdmin();
+```
+
+**Employee Pages:**
+```javascript
+import { requireAuth, getCurrentUser } from '../../components/auth-guard.js';
+requireAuth();
+const currentUser = getCurrentUser();
+```
+
+### Guard Behavior
+
+When access is denied:
+
+1. **Not authenticated** → Redirect to `/pages/login.html`
+2. **Wrong role** → Redirect to appropriate dashboard or show error
+3. **Insufficient permissions** → Show access denied message
+
+### Manual Session Check
+
+Pages can manually verify sessions:
+
+```javascript
+const session = authService.getSession();
+if (!session || !session.email) {
+  window.location.replace('../login.html');
+}
+```
+
+## Logout Process
+
+Proper logout ensures security and session cleanup:
+
+<Steps>
+  <Step title="Trigger logout">
+    Click "Cerrar Sesión" in the sidebar menu or call the logout function:
+    ```javascript
+    window.logout = async function () {
+      await authService.logout();
+      secureLogout();
+    }
+    ```
+  </Step>
+  
+  <Step title="Firebase sign out">
+    ```javascript
+    signOut(auth)
+    ```
+    Terminates Firebase authentication session.
+  </Step>
+  
+  <Step title="Clear application state">
+    ```javascript
+    authStore.logout()
+    ```
+    Resets user state in application store.
+  </Step>
+  
+  <Step title="Remove session data">
+    ```javascript
+    clearSession()
+    localStorage.removeItem('textileflow_session')
+    ```
+    Removes session from localStorage.
+  </Step>
+  
+  <Step title="Redirect to login">
+    User is redirected to the login page with all credentials cleared.
+  </Step>
+</Steps>
+
+## Error Handling
+
+The authentication system handles various error scenarios:
+
+### Common Error Codes
+
+<AccordionGroup>
+  <Accordion title="auth/email-already-in-use">
+    **Message:** "El email ya está registrado"
+    
+    **Solution:** Use a different email address or request password reset for existing account.
+  </Accordion>
+  
+  <Accordion title="auth/invalid-email">
+    **Message:** "Email inválido"
+    
+    **Solution:** Verify email format is correct (e.g., user@domain.com).
+  </Accordion>
+  
+  <Accordion title="auth/weak-password">
+    **Message:** "La contraseña es muy débil"
+    
+    **Solution:** Use a password with at least 8 characters including letters, numbers, and symbols.
+  </Accordion>
+  
+  <Accordion title="auth/user-not-found">
+    **Message:** "Usuario no encontrado"
+    
+    **Solution:** Verify email is correct or contact administrator to create account.
+  </Accordion>
+  
+  <Accordion title="auth/wrong-password">
+    **Message:** "Contraseña incorrecta"
+    
+    **Solution:** Re-enter password carefully or use password reset if forgotten.
+  </Accordion>
+  
+  <Accordion title="auth/too-many-requests">
+    **Message:** "Demasiados intentos. Intenta más tarde"
+    
+    **Solution:** Wait 15-30 minutes before attempting to log in again.
+  </Accordion>
+  
+  <Accordion title="auth/invalid-credential">
+    **Message:** "Email o contraseña incorrectos"
+    
+    **Solution:** Verify both email and password are correct.
+  </Accordion>
+</AccordionGroup>
+
+### Error Handling Implementation
+
+```javascript
+handleAuthError(errorCode) {
+  const errorMessages = {
+    'auth/email-already-in-use': 'El email ya está registrado',
+    'auth/invalid-email': 'Email inválido',
+    'auth/weak-password': 'La contraseña es muy débil',
+    // ... more mappings
+  };
+  return errorMessages[errorCode] || 'Error de autenticación';
+}
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="For Users">
+    - Use strong, unique passwords (min 8 characters)
+    - Never share login credentials
+    - Always log out on shared computers
+    - Change password regularly
+    - Report suspicious activity immediately
+    - Verify you're on the correct login page
+  </Accordion>
+  
+  <Accordion title="For Administrators">
+    - Regularly audit user accounts
+    - Remove inactive users promptly
+    - Monitor login attempts and patterns
+    - Enforce password policies
+    - Review and update permissions periodically
+    - Keep Firebase security rules updated
+    - Monitor Firestore access logs
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting Authentication
+
+### Login Issues
+
+**Cannot log in:**
+1. Verify email and password are correct
+2. Check CAPS LOCK is off
+3. Clear browser cache and cookies
+4. Try password reset if password forgotten
+5. Check internet connection
+6. Verify Firebase Authentication is operational
+
+**Automatic logout:**
+1. Check if session expired
+2. Verify localStorage is enabled in browser
+3. Check for session protection triggers
+4. Review browser console for errors
+5. Try different browser
+
+**Role redirect issues:**
+1. Verify role is set correctly in Firestore
+2. Check session data in localStorage
+3. Clear session and log in again
+4. Contact administrator to verify role assignment
+
+### Session Issues
+
+**Session not persisting:**
+- Enable cookies and localStorage in browser
+- Check browser privacy settings
+- Disable "Block third-party cookies"
+- Try incognito/private mode to test
+
+**Session tampering detected:**
+- Do not manually edit localStorage
+- Do not use browser dev tools to modify session
+- Log out and log in properly to reset session
+
+## Firebase Configuration
+
+The system connects to Firebase with these services:
+
+```javascript
+const firebaseConfig = {
+  apiKey: "[API_KEY]",
+  authDomain: "textileflow-test.firebaseapp.com",
+  projectId: "textileflow-test",
+  storageBucket: "textileflow-test.firebasestorage.app",
+  messagingSenderId: "[SENDER_ID]",
+  appId: "[APP_ID]",
+  measurementId: "[MEASUREMENT_ID]"
+};
+```
+
+**Firebase Services Used:**
+- **Authentication** - Email/password authentication
+- **Firestore** - User data storage in `usuario` collection
+- **Security Rules** - Access control at database level
+
+<Note>
+  Firebase configuration is initialized separately for different modules to avoid conflicts between dashboard and authentication contexts.
+</Note>
+
+## API Reference
+
+### AuthService Methods
+
+- `login(email, password)` - Authenticate user
+- `logout()` - Sign out and clear session
+- `register(userData)` - Create new user account
+- `resetPassword(email)` - Send password reset email
+- `getCurrentUser()` - Get current authenticated user
+- `isAuthenticated()` - Check if user is authenticated
+- `saveSession(user, userData)` - Store session data
+- `getSession()` - Retrieve current session
+- `clearSession()` - Remove session data
+- `onAuthStateChanged(callback)` - Listen for auth state changes
+
+### AuthGuard Methods
+
+- `isAuthenticated()` - Verify user is logged in
+- `hasRole(role)` - Check if user has specific role
+- `hasPermission(permission)` - Verify user permission
+- `hasAnyRole(roles)` - Check if user has any of specified roles
+- `canActivate(role, permissions)` - Comprehensive access check
+- `redirectToLoginIfNotAuth()` - Redirect unauthenticated users
+
+## Additional Resources
+
+- [Admin Guide](/guides/admin-guide) - Administrator features and workflows
+- [Employee Guide](/guides/employee-guide) - Employee dashboard and features
+- Firebase Authentication Documentation
+- Firestore Database Documentation

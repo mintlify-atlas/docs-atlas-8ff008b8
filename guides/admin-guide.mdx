@@ -1,0 +1,382 @@
+---
+title: 'Admin Guide'
+description: 'Complete guide for administrators managing TextileFlow ERP system'
+icon: 'user-shield'
+---
+
+This guide covers all administrative features and workflows available to administrators in TextileFlow ERP.
+
+## Getting Started
+
+As an administrator, you have full access to all system modules including user management, inventory control, sales tracking, attendance management, payroll processing, and comprehensive reporting.
+
+### Accessing the Admin Dashboard
+
+<Steps>
+  <Step title="Log in with admin credentials">
+    Navigate to the login page and enter your admin email and password. The system will automatically redirect you to the admin dashboard based on your role.
+  </Step>
+  
+  <Step title="View dashboard overview">
+    Upon login, you'll see the main dashboard at `/admin/dashboard.html` with key performance indicators (KPIs) and quick access to all modules.
+  </Step>
+</Steps>
+
+<Note>
+  Admin sessions are stored in `localStorage` with the key `textileflow_session`. The system automatically validates your role and permissions on every page load.
+</Note>
+
+## Dashboard Overview
+
+The admin dashboard provides a comprehensive view of your business operations:
+
+### Key Performance Indicators (KPIs)
+
+The dashboard displays four main KPI cards:
+
+- **Empleados Activos** - Total active employees with month-over-month growth trend
+- **Asistencia del Mes** - Monthly attendance percentage with performance indicators
+- **Tardanzas del Mes** - Number of late arrivals (arrival after 8:30 AM)
+- **Productos Stock Bajo** - Products with stock levels below minimum threshold (less than 10 units)
+
+### Dashboard Charts
+
+The dashboard includes three interactive charts:
+
+1. **Asistencia Últimos 7 Días** - Line chart showing daily attendance over the past week
+2. **Distribución de Empleados** - Doughnut chart displaying employee distribution by role
+3. **Stock por Categoría** - Bar chart showing inventory levels by product category
+
+### Quick Actions
+
+Access frequently used features directly from the dashboard:
+
+- **Nuevo Empleado** - Navigate to `rrhh.html` to add employees
+- **Agregar Producto** - Go to `inventario.html` to add products
+- **Registrar Asistencia** - Open `asistencia.html` for attendance tracking
+- **Generar Reporte** - Access `reportes.html` for report generation
+
+## User Management (RRHH)
+
+The Human Resources module (`/admin/rrhh.html`) provides comprehensive user management capabilities.
+
+### Managing Users
+
+<Tabs>
+  <Tab title="Usuarios">
+    Manage all system users including administrators and employees.
+    
+    **Available Actions:**
+    - Add new users with the "Agregar Usuario" button
+    - Filter by document type (CC, CE, DNI, PA, RUC)
+    - Filter by role (Empleado, Administrador)
+    - Filter by status (activo, inactivo)
+    - Export to PDF, Excel, or print
+    
+    **User Form Fields:**
+    - Tipo de Documento (required)
+    - Número de Documento (required)
+    - Nombre (required)
+    - Apellido (required)
+    - Email (required)
+    - Rol (required: Empleado, Administrador, Cliente)
+    - Teléfono
+    - Contraseña (required)
+    - Dirección
+  </Tab>
+  
+  <Tab title="Clientes">
+    Manage client database for sales and service tracking.
+    
+    **Available Actions:**
+    - Add new clients with "Agregar Cliente"
+    - Filter by document type and status
+    - Export client lists
+    - View and edit client information
+  </Tab>
+  
+  <Tab title="Empleados">
+    View and manage employee payroll information.
+    
+    **Displayed Information:**
+    - Nombre Completo
+    - Teléfono
+    - Email
+    - Fecha de Ingreso
+    - Antigüedad (calculated tenure)
+    - Salario
+    - Estado (activo/inactivo)
+    - Fecha de Salida
+    
+    **Filtering Options:**
+    - Search by name, email, or phone
+    - Filter by status
+    - Filter by salary range (min/max)
+  </Tab>
+</Tabs>
+
+<Warning>
+  When creating new users, ensure the email is unique and the password meets minimum security requirements (at least 8 characters).
+</Warning>
+
+## Attendance Management
+
+The attendance module (`/admin/asistencia.html`) allows you to track and manage employee attendance.
+
+### Key Features
+
+- **Real-time tracking** - View today's attendance status for all employees
+- **Historical records** - Access attendance history with flexible date ranges
+- **Tardanza detection** - System automatically flags entries after 8:30 AM
+- **Manual entry** - Register attendance for employees as needed
+- **Export capabilities** - Generate attendance reports in multiple formats
+
+<Note>
+  The system defines tardiness (tardanza) as any entry after 8:30 AM. This threshold is configured in the `HORA_INICIO_LABORAL` constant in `dashboard.js`.
+</Note>
+
+## Inventory Management
+
+Access comprehensive inventory control through `/admin/inventario.html`.
+
+### Category Management
+
+<Steps>
+  <Step title="Add categories">
+    Click "Nueva Categoría" to create product categories. Each category requires a name, description, and status.
+  </Step>
+  
+  <Step title="View category list">
+    The category table displays:
+    - Número (ID)
+    - Nombre (name)
+    - Descripción (description)
+    - Estado (status)
+    - Acción (actions)
+  </Step>
+</Steps>
+
+### Product Management
+
+**Adding Products:**
+1. Click "Nuevo Producto"
+2. Select the product category
+3. Enter product details
+4. Set initial stock levels
+5. Save to inventory database
+
+**Filtering Products:**
+- Filter by estado (activo/descontinuado)
+- View all products or active products only
+
+<Warning>
+  Products with stock below 10 units will appear in the dashboard's "Productos Stock Bajo" KPI. Monitor this regularly to avoid stockouts.
+</Warning>
+
+## Sales Management
+
+The sales module (`/admin/ventas.html`) provides tools for recording and tracking sales transactions.
+
+### Recording Sales
+
+<Steps>
+  <Step title="Open sales form">
+    Click "Registrar venta" to open the sales registration modal.
+  </Step>
+  
+  <Step title="Select sale type">
+    Choose between:
+    - Standard product sale
+    - Service mode (🛠️ Modo Servicio / Manual)
+  </Step>
+  
+  <Step title="Enter sale details">
+    - Select customer
+    - Add products or services
+    - Specify quantities
+    - Review total amount
+  </Step>
+  
+  <Step title="Complete transaction">
+    Save the sale to generate a comprobante (receipt/invoice) number.
+  </Step>
+</Steps>
+
+### Sales Table Columns
+
+- **Nro Comprobante** - Unique transaction ID
+- **Cliente** - Customer name
+- **Fecha** - Transaction date
+- **Cantidad de articulos** - Number of items sold
+- **Monto total** - Total sale amount
+- **Acciones** - View details or modify
+
+**Export Options:**
+- Excel export for all records
+- Column selector to customize visible fields
+
+## Payroll Processing
+
+Manage employee payments through the payroll module (`/admin/pagos.html`).
+
+### Payment Processing Workflow
+
+<AccordionGroup>
+  <Accordion title="Generate Monthly Payroll">
+    Process payroll for all active employees for the selected period (e.g., "2025-02" for February 2025).
+  </Accordion>
+  
+  <Accordion title="Review Payment Details">
+    Verify employee salaries, deductions, and bonuses before finalizing payments.
+  </Accordion>
+  
+  <Accordion title="Record Payment">
+    Save payment records to the `pagos_empleados` collection in Firestore with:
+    - uid (employee ID)
+    - periodo_pago (payment period)
+    - pago_total (total payment amount)
+    - detalle (payment description)
+    - estado (payment status: pagado/pendiente/anulado)
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Payment records are stored in the Firestore collection `pagos_empleados` and are accessible to employees through their personal dashboard.
+</Note>
+
+## Reporting and Analytics
+
+The reports module (`/admin/reportes.html`) provides comprehensive analytics across all business areas.
+
+### Report Categories
+
+<Tabs>
+  <Tab title="Asistencias">
+    **Available Reports:**
+    - Resumen Mensual - Monthly attendance metrics and punctuality
+    - Tardanzas - Late arrival records
+    - Ausencias - Days without attendance records
+    
+    **Period Options:**
+    - Daily
+    - Weekly
+    - Monthly
+    - Custom date range
+  </Tab>
+  
+  <Tab title="Pagos">
+    Generate payroll reports showing:
+    - Payment history by period
+    - Total payments by employee
+    - Payment status tracking
+  </Tab>
+  
+  <Tab title="RRHH">
+    Employee management reports including:
+    - Active employee count
+    - Employee turnover
+    - Role distribution
+    - Tenure analysis
+  </Tab>
+  
+  <Tab title="Inventario">
+    Inventory analytics:
+    - Stock levels by category
+    - Low stock alerts
+    - Product status (active/discontinued)
+    - Stock movement history
+  </Tab>
+  
+  <Tab title="Ventas">
+    Sales performance reports:
+    - Total sales by period
+    - Sales by customer
+    - Product sales analysis
+    - Revenue trends
+  </Tab>
+</Tabs>
+
+### Exporting Reports
+
+All reports support multiple export formats:
+- **PDF** - For formal documentation and printing
+- **Excel** - For data analysis and manipulation
+- **Print** - Direct printing from the browser
+
+## Configuration and Settings
+
+Access system configuration through `/admin/configuracion.html`.
+
+### Available Settings
+
+- System preferences
+- User permissions management
+- Business information
+- Integration settings
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Daily Operations">
+    1. Review dashboard KPIs each morning
+    2. Monitor attendance and tardiness patterns
+    3. Check low stock alerts
+    4. Process any pending sales transactions
+  </Accordion>
+  
+  <Accordion title="Weekly Tasks">
+    1. Generate attendance reports
+    2. Review sales performance
+    3. Update inventory levels
+    4. Address any employee issues
+  </Accordion>
+  
+  <Accordion title="Monthly Tasks">
+    1. Process payroll for all employees
+    2. Generate comprehensive monthly reports
+    3. Review and update user permissions
+    4. Analyze trends and KPIs
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+  - Always log out when leaving your workstation
+  - Regularly update passwords
+  - Review user access levels periodically
+  - Monitor system activity logs
+  - Never share admin credentials
+</Warning>
+
+## Troubleshooting
+
+### Common Issues
+
+**Dashboard not loading:**
+- Check browser console for errors
+- Verify session is active in localStorage
+- Clear browser cache and reload
+
+**Unable to add users:**
+- Ensure email is unique
+- Verify all required fields are completed
+- Check that document number is not duplicated
+
+**Charts not displaying:**
+- Confirm Chart.js library is loaded
+- Check that Firestore collections have data
+- Verify Firebase connection is active
+
+**Export not working:**
+- Ensure export libraries (jsPDF, xlsx) are loaded
+- Check browser popup blocker settings
+- Verify you have data to export
+
+## Support
+
+For additional assistance:
+- Review error messages in the browser console
+- Check session data in localStorage (key: `textileflow_session`)
+- Contact system administrator
+- Refer to the [Authentication Guide](/guides/authentication) for login issues

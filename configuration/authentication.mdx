@@ -1,0 +1,406 @@
+---
+title: Authentication Configuration
+description: Set up user authentication, roles, and access control in TextileFlow ERP
+---
+
+## Overview
+
+TextileFlow ERP uses Firebase Authentication to manage user access with a role-based access control (RBAC) system. The system supports two primary roles: **Admin** and **Employee**, each with specific permissions.
+
+## Authentication Setup
+
+### Enable Firebase Authentication
+
+<Steps>
+  <Step title="Enable Email/Password Authentication">
+    1. Open [Firebase Console](https://console.firebase.google.com/)
+    2. Select your project
+    3. Navigate to **Build** → **Authentication**
+    4. Click **Get started** (if first time)
+    5. Go to the **Sign-in method** tab
+    6. Enable **Email/Password** provider
+    7. Click **Save**
+  </Step>
+
+  <Step title="Configure Auth Settings">
+    - **Email enumeration protection**: Enable for security
+    - **Password policy**: Set minimum 6 characters (Firebase default)
+    - **Authorized domains**: Add your deployment domains
+  </Step>
+</Steps>
+
+## User Roles and Permissions
+
+TextileFlow implements two distinct user roles:
+
+### Admin Role
+
+Administrators have full access to all system features:
+
+- ✅ Full CRUD on employees and users
+- ✅ Access to HR management
+- ✅ Inventory management
+- ✅ Attendance tracking and reports
+- ✅ Payroll management
+- ✅ System configuration
+- ✅ Generate and export reports
+- ✅ View all dashboards and analytics
+
+### Employee Role
+
+Employees have limited access to relevant features:
+
+- ✅ Mark their own attendance (entry/exit)
+- ✅ View their attendance history
+- ✅ View their payment records
+- ✅ Update their personal profile
+- ❌ Cannot access HR management
+- ❌ Cannot manage other users
+- ❌ Cannot access system configuration
+
+## User Data Structure
+
+Users are stored in the `usuario` Firestore collection with the following structure:
+
+<CodeGroup>
+```json User Document Schema
+{
+  "uid": "firebase-auth-uid",
+  "email": "user@example.com",
+  "displayName": "John Doe",
+  "tipoDocumento": "CC",  // CC, CE, NIT, PA
+  "numeroDocumento": "12345678",
+  "nombre": "John",
+  "apellido": "Doe",
+  "telefono": "+1234567890",
+  "direccion": "123 Main St",
+  "rol": "employee",  // "admin" or "employee"
+  "estado": "activo",  // "activo" or "inactivo"
+  "fechaCreacion": "2026-03-08T10:00:00Z",
+  "fotoPerfil": "https://storage.googleapis.com/..."
+}
+```
+</CodeGroup>
+
+## Creating User Accounts
+
+### Through the Admin Panel
+
+Administrators can create users through the HR Management module:
+
+<Steps>
+  <Step title="Access HR Module">
+    1. Log in as an administrator
+    2. Navigate to **Dashboard** → **RRHH** (Human Resources)
+    3. Click **Agregar Usuario** (Add User)
+  </Step>
+
+  <Step title="Fill User Information">
+    Complete the user registration form:
+    
+    - **Document Type**: CC, CE, NIT, or PA
+    - **Document Number**: Unique identifier
+    - **Name**: First name
+    - **Last Name**: Last name
+    - **Email**: Unique email address
+    - **Phone**: Contact number
+    - **Address**: Physical address
+    - **Role**: Admin or Employee
+    - **Password**: Initial password (user can change later)
+  </Step>
+
+  <Step title="Save and Create">
+    1. Click **Guardar** (Save)
+    2. The system will:
+       - Validate unique email and document
+       - Create Firebase Auth account
+       - Store user data in Firestore
+       - Send confirmation (if email is configured)
+  </Step>
+</Steps>
+
+<Note>
+  Document numbers and email addresses must be unique across the system. The system will show an error if duplicates are detected.
+</Note>
+
+### Programmatic User Creation
+
+You can also create users programmatically using the Firebase Admin SDK:
+
+<CodeGroup>
+```javascript Create User Example
+import { auth, db } from '/src/config/firebase.js';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+
+async function createEmployee(userData) {
+  try {
+    // Create Firebase Auth user
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      userData.email,
+      userData.password
+    );
+
+    // Store additional user data in Firestore
+    await setDoc(doc(db, 'usuario', userCredential.user.uid), {
+      uid: userCredential.user.uid,
+      email: userData.email,
+      displayName: `${userData.nombre} ${userData.apellido}`,
+      tipoDocumento: userData.tipoDocumento,
+      numeroDocumento: userData.numeroDocumento,
+      nombre: userData.nombre,
+      apellido: userData.apellido,
+      telefono: userData.telefono,
+      direccion: userData.direccion,
+      rol: userData.rol || 'employee',
+      estado: 'activo',
+      fechaCreacion: new Date().toISOString()
+    });
+
+    console.log('Usuario creado exitosamente');
+    return { success: true, uid: userCredential.user.uid };
+  } catch (error) {
+    console.error('Error creating user:', error);
+    return { success: false, error: error.message };
+  }
+}
+```
+</CodeGroup>
+
+## Role Management
+
+### Assigning Roles
+
+Roles are assigned when creating or editing a user in the HR module:
+
+1. Open the user edit modal
+2. Select the role from the dropdown:
+   - **Admin**: Full system access
+   - **Empleado** (Employee): Limited access
+3. Save the changes
+
+### Changing User Roles
+
+To change an existing user's role:
+
+<Steps>
+  <Step title="Navigate to HR Module">
+    Dashboard → RRHH → Find the user
+  </Step>
+
+  <Step title="Edit User">
+    Click the edit icon next to the user
+  </Step>
+
+  <Step title="Update Role">
+    Select the new role from the dropdown and save
+  </Step>
+</Steps>
+
+<Warning>
+  Changing a user from Admin to Employee will immediately revoke their administrative privileges upon their next login.
+</Warning>
+
+## Authentication Guard
+
+TextileFlow uses an AuthGuard to protect routes based on user roles:
+
+<CodeGroup>
+```javascript components/auth-guard.js
+// AuthGuard checks if user is authenticated and has required role
+export async function checkAuth(requiredRole = null) {
+  const user = auth.currentUser;
+  
+  if (!user) {
+    // Not logged in - redirect to login
+    window.location.href = '/pages/login.html';
+    return false;
+  }
+
+  if (requiredRole) {
+    // Fetch user role from Firestore
+    const userDoc = await getDoc(doc(db, 'usuario', user.uid));
+    const userData = userDoc.data();
+
+    if (userData.rol !== requiredRole) {
+      // Insufficient permissions
+      window.location.href = '/pages/unauthorized.html';
+      return false;
+    }
+  }
+
+  return true;
+}
+```
+</CodeGroup>
+
+### Protecting Pages
+
+Add the AuthGuard to any protected page:
+
+<CodeGroup>
+```javascript Example: Protecting Admin Pages
+import { checkAuth } from '/components/auth-guard.js';
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Require admin role to access this page
+  const hasAccess = await checkAuth('admin');
+  
+  if (!hasAccess) {
+    return; // AuthGuard will redirect
+  }
+
+  // Continue with page initialization
+  initializePage();
+});
+```
+</CodeGroup>
+
+## User Status Management
+
+### Active vs Inactive Users
+
+Users can be in two states:
+
+- **Activo** (Active): Can log in and access the system
+- **Inactivo** (Inactive): Account disabled, cannot log in
+
+### Deactivating a User
+
+<Steps>
+  <Step title="Navigate to HR Module">
+    Dashboard → RRHH
+  </Step>
+
+  <Step title="Toggle User Status">
+    Click the status toggle button next to the user
+  </Step>
+
+  <Step title="Confirm Action">
+    Confirm the status change in the dialog
+  </Step>
+</Steps>
+
+<Note>
+  Inactive users retain all their data but cannot log in. You can reactivate them at any time by toggling their status back to "Activo".
+</Note>
+
+## Password Management
+
+### Setting Initial Passwords
+
+When creating a user, administrators set an initial password. Users should change this on their first login.
+
+### Password Reset
+
+Users can reset their password using Firebase's built-in password reset:
+
+<CodeGroup>
+```javascript Password Reset
+import { sendPasswordResetEmail } from 'firebase/auth';
+
+async function resetPassword(email) {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    console.log('Password reset email sent');
+  } catch (error) {
+    console.error('Error sending reset email:', error);
+  }
+}
+```
+</CodeGroup>
+
+### Changing Passwords (Admin)
+
+Administrators can change user passwords through the HR module edit form.
+
+## Session Management
+
+TextileFlow manages user sessions using Firebase Authentication and localStorage:
+
+- Sessions persist across browser refreshes
+- Session data is stored in localStorage
+- User data is refreshed from Firestore on page load
+- Automatic logout on token expiration
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Enable Firestore Security Rules">
+    Update `firestore.rules` to require authentication:
+    
+    ```javascript
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    ```
+  </Step>
+
+  <Step title="Implement Role-Based Rules">
+    Add role-specific rules:
+    
+    ```javascript
+    match /usuario/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId || 
+                     get(/databases/$(database)/documents/usuario/$(request.auth.uid)).data.rol == 'admin';
+    }
+    ```
+  </Step>
+
+  <Step title="Use Strong Passwords">
+    Enforce strong password policies:
+    - Minimum 8 characters
+    - Mix of letters, numbers, and symbols
+    - No common passwords
+  </Step>
+
+  <Step title="Enable Email Verification">
+    Require email verification for new accounts
+  </Step>
+
+  <Step title="Monitor Authentication Events">
+    Use Firebase Authentication logs to monitor:
+    - Failed login attempts
+    - Suspicious activity
+    - Password reset requests
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Issue: User Cannot Log In
+
+**Possible causes:**
+- Account is marked as "inactivo" (inactive)
+- Incorrect password
+- Email not verified (if verification is enabled)
+- Firebase Auth service is down
+
+**Solution:**
+1. Check user status in HR module
+2. Verify Firebase Authentication service status
+3. Reset user password if needed
+4. Check browser console for errors
+
+### Issue: Role Changes Not Taking Effect
+
+**Solution:**
+1. Ensure user logs out and logs back in
+2. Clear browser cache and localStorage
+3. Verify role was saved in Firestore
+
+### Issue: Cannot Create Users
+
+**Solution:**
+1. Check Firebase Authentication is enabled
+2. Verify Firestore security rules allow writes
+3. Check for duplicate email or document number
+4. Review browser console for detailed errors
+
+## Next Steps
+
+- [Configure schedules for attendance tracking](/configuration/schedules)
+- [Set up deployment for production](/configuration/deployment)
+- [Learn about the HR Management module](/features/human-resources)

@@ -1,0 +1,462 @@
+---
+title: 'Auth Service'
+description: 'Authentication and user management service using Firebase Authentication'
+icon: 'shield-halved'
+---
+
+## Overview
+
+The `AuthService` handles all authentication operations including user registration, login, logout, password reset, and session management. It integrates with Firebase Authentication and Firestore to manage user data.
+
+**Location:** `public/src/auth/services/authService.js`
+
+---
+
+## Methods
+
+### register()
+
+Registers a new user with Firebase Authentication and creates a user document in Firestore.
+
+<ParamField path="userData" type="object" required>
+  User registration data
+  
+  <Expandable title="properties">
+    <ParamField path="email" type="string" required>
+      User email address
+    </ParamField>
+    
+    <ParamField path="password" type="string" required>
+      User password (min 6 characters)
+    </ParamField>
+    
+    <ParamField path="fullName" type="string" required>
+      User's full name
+    </ParamField>
+    
+    <ParamField path="company" type="string">
+      Company name
+    </ParamField>
+    
+    <ParamField path="phone" type="string">
+      Contact phone number
+    </ParamField>
+    
+    <ParamField path="newsletter" type="boolean">
+      Newsletter subscription preference
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Indicates if registration was successful
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Firebase user object (if successful)
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message (if failed)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+import { authService } from './auth/services/authService.js';
+
+const userData = {
+  email: 'user@example.com',
+  password: 'securePassword123',
+  fullName: 'John Doe',
+  company: 'TextileCo',
+  phone: '+1234567890',
+  newsletter: true
+};
+
+const result = await authService.register(userData);
+
+if (result.success) {
+  console.log('User registered:', result.user);
+} else {
+  console.error('Registration failed:', result.error);
+}
+```
+
+```javascript Response (Success)
+{
+  success: true,
+  user: {
+    uid: 'abc123xyz',
+    email: 'user@example.com',
+    displayName: 'John Doe'
+  }
+}
+```
+
+```javascript Response (Error)
+{
+  success: false,
+  error: 'El email ya está registrado'
+}
+```
+</CodeGroup>
+
+---
+
+### login()
+
+Authenticates a user with email and password, retrieves user data from Firestore, and saves the session.
+
+<ParamField path="email" type="string" required>
+  User email address
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  User password
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Indicates if login was successful
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Firebase Auth user object
+</ResponseField>
+
+<ResponseField name="userData" type="object">
+  Complete user data from Firestore
+  
+  <Expandable title="properties">
+    <ResponseField name="uid" type="string">
+      User unique identifier
+    </ResponseField>
+    
+    <ResponseField name="email" type="string">
+      User email
+    </ResponseField>
+    
+    <ResponseField name="nombre" type="string">
+      User's first name
+    </ResponseField>
+    
+    <ResponseField name="apellido" type="string">
+      User's last name
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Full display name
+    </ResponseField>
+    
+    <ResponseField name="rol" type="string">
+      User role (e.g., "Admin", "Empleado")
+    </ResponseField>
+    
+    <ResponseField name="permissions" type="array">
+      User permissions array
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message (if failed)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await authService.login('user@example.com', 'password123');
+
+if (result.success) {
+  console.log('User logged in:', result.userData);
+  console.log('Role:', result.userData.rol);
+} else {
+  console.error('Login failed:', result.error);
+}
+```
+
+```javascript Response (Success)
+{
+  success: true,
+  user: { /* Firebase user object */ },
+  userData: {
+    uid: 'abc123xyz',
+    email: 'user@example.com',
+    nombre: 'John',
+    apellido: 'Doe',
+    displayName: 'John Doe',
+    rol: 'Empleado',
+    permissions: ['read']
+  }
+}
+```
+
+```javascript Response (Error)
+{
+  success: false,
+  error: 'Email o contraseña incorrectos'
+}
+```
+</CodeGroup>
+
+---
+
+### logout()
+
+Signs out the current user, clears the session, and updates the auth store.
+
+<ResponseField name="success" type="boolean">
+  Indicates if logout was successful
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message (if failed)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await authService.logout();
+
+if (result.success) {
+  console.log('User logged out successfully');
+  window.location.href = '/pages/login.html';
+} else {
+  console.error('Logout failed:', result.error);
+}
+```
+
+```javascript Response
+{
+  success: true
+}
+```
+</CodeGroup>
+
+---
+
+### resetPassword()
+
+Sends a password reset email to the specified email address.
+
+<ParamField path="email" type="string" required>
+  Email address to send password reset link
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Indicates if the reset email was sent
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message (if failed)
+</ResponseField>
+
+<CodeGroup>
+```javascript Example Usage
+const result = await authService.resetPassword('user@example.com');
+
+if (result.success) {
+  console.log('Password reset email sent');
+} else {
+  console.error('Failed to send reset email:', result.error);
+}
+```
+</CodeGroup>
+
+---
+
+### onAuthStateChanged()
+
+Registers a callback that fires whenever the user's authentication state changes.
+
+<ParamField path="callback" type="function" required>
+  Function to call when auth state changes. Receives the current user object or null.
+</ParamField>
+
+**Returns:** Unsubscribe function to stop listening to auth state changes
+
+<CodeGroup>
+```javascript Example Usage
+const unsubscribe = authService.onAuthStateChanged((user) => {
+  if (user) {
+    console.log('User is logged in:', user.displayName);
+    console.log('Role:', user.rol);
+  } else {
+    console.log('User is logged out');
+  }
+});
+
+// Later, to stop listening:
+unsubscribe();
+```
+</CodeGroup>
+
+---
+
+### getCurrentUser()
+
+Returns the currently authenticated user.
+
+**Returns:** User object or null if not authenticated
+
+<CodeGroup>
+```javascript Example Usage
+const currentUser = authService.getCurrentUser();
+
+if (currentUser) {
+  console.log('Current user:', currentUser.email);
+} else {
+  console.log('No user logged in');
+}
+```
+</CodeGroup>
+
+---
+
+### isAuthenticated()
+
+Checks if a user is currently authenticated.
+
+**Returns:** `true` if user is authenticated, `false` otherwise
+
+<CodeGroup>
+```javascript Example Usage
+if (authService.isAuthenticated()) {
+  // User is logged in
+  loadDashboard();
+} else {
+  // Redirect to login
+  window.location.href = '/pages/login.html';
+}
+```
+</CodeGroup>
+
+---
+
+### Session Management
+
+#### saveSession()
+
+Saves user session data to localStorage.
+
+<ParamField path="user" type="object" required>
+  Firebase Auth user object
+</ParamField>
+
+<ParamField path="userData" type="object" required>
+  Additional user data from Firestore
+</ParamField>
+
+<CodeGroup>
+```javascript Session Data Structure
+{
+  uid: 'abc123xyz',
+  email: 'user@example.com',
+  nombre: 'John',
+  apellido: 'Doe',
+  displayName: 'John Doe',
+  rol: 'Empleado',
+  permissions: ['read'],
+  timestamp: 1678901234567
+}
+```
+</CodeGroup>
+
+#### getSession()
+
+Retrieves the current session from localStorage.
+
+**Returns:** Session object or null if no session exists
+
+<CodeGroup>
+```javascript Example Usage
+const session = authService.getSession();
+
+if (session) {
+  console.log('Active session for:', session.displayName);
+  console.log('Role:', session.rol);
+} else {
+  console.log('No active session');
+}
+```
+</CodeGroup>
+
+#### clearSession()
+
+Clears the current session from localStorage.
+
+<CodeGroup>
+```javascript Example Usage
+authService.clearSession();
+console.log('Session cleared');
+```
+</CodeGroup>
+
+---
+
+## Error Handling
+
+The service includes comprehensive error handling with localized error messages:
+
+| Firebase Error Code | User-Friendly Message |
+|---------------------|----------------------|
+| `auth/email-already-in-use` | El email ya está registrado |
+| `auth/invalid-email` | Email inválido |
+| `auth/weak-password` | La contraseña es muy débil |
+| `auth/user-not-found` | Usuario no encontrado |
+| `auth/wrong-password` | Contraseña incorrecta |
+| `auth/too-many-requests` | Demasiados intentos. Intenta más tarde |
+| `auth/invalid-credential` | Email o contraseña incorrectos |
+
+<CodeGroup>
+```javascript Error Handling Example
+const result = await authService.login(email, password);
+
+if (!result.success) {
+  // Display localized error to user
+  showNotification(result.error, 'error');
+  
+  // Handle specific error types
+  if (result.error.includes('incorrectos')) {
+    highlightLoginFields();
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Integration with Auth Store
+
+The Auth Service automatically updates the global `authStore` on login and logout:
+
+<CodeGroup>
+```javascript Auth Store Integration
+import { authStore } from '../../store/authStore.js';
+
+// On login
+authStore.setUser(user, userData.rol, userData.permissions);
+
+// On logout
+authStore.logout();
+```
+</CodeGroup>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Check Results" icon="check">
+    Always verify the `success` property before accessing user data
+  </Card>
+  
+  <Card title="Handle Errors Gracefully" icon="triangle-exclamation">
+    Display user-friendly error messages from the `error` property
+  </Card>
+  
+  <Card title="Manage Sessions" icon="clock">
+    Use session methods to persist user authentication across page reloads
+  </Card>
+  
+  <Card title="Listen to Auth Changes" icon="bell">
+    Use `onAuthStateChanged` to react to authentication state changes
+  </Card>
+</CardGroup>

@@ -1,0 +1,652 @@
+---
+title: 'Reports and Analytics'
+description: 'Comprehensive reporting system for attendance, payroll, inventory, and HR analytics'
+icon: 'chart-line'
+---
+
+## Overview
+
+The Reports (Reportes) module provides comprehensive analytics and reporting capabilities across all TextileFlow ERP modules, with support for attendance tracking, payroll analysis, and customizable report generation.
+
+<Note>
+  Reports support multiple export formats (PDF, Excel, Print) and include interactive charts using Chart.js.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Attendance Reports" icon="clock">
+    Monthly summaries, tardiness tracking, and absence reports with date range filters
+  </Card>
+  <Card title="Payroll Reports" icon="money-bill">
+    Monthly payroll summaries, employee payment history, and comparative analysis
+  </Card>
+  <Card title="Multiple Export Options" icon="file-export">
+    Export to PDF, Excel, or print directly with formatted layouts
+  </Card>
+  <Card title="Interactive Charts" icon="chart-bar">
+    Visual analytics with Chart.js for trends and comparisons
+  </Card>
+</CardGroup>
+
+## Module Architecture
+
+### Core Files
+
+- **JavaScript**: `public/js/reportes.js` (1,280+ lines)
+- **HTML**: `public/pages/admin/reportes.html`
+- **Dependencies**: Chart.js, jsPDF, XLSX
+
+### Report Categories
+
+The module is organized into tabs:
+
+1. **Asistencias** - Attendance reports
+2. **Nómina** - Payroll reports
+3. **RRHH** - HR analytics (future)
+4. **Inventario** - Stock reports (future)
+
+## Attendance Reports
+
+### Monthly Attendance Summary
+
+Generate comprehensive attendance report for any month (`reportes.js:385-515`):
+
+<Steps>
+  <Step title="Select Report Type">
+    Click **Asistencia Mensual** card
+  </Step>
+  
+  <Step title="Configure Filters">
+    - **Mes**: Select month (YYYY-MM format)
+    - **Empleado**: Optional - specific employee or all
+  </Step>
+  
+  <Step title="Generate Report">
+    Click **Generar Reporte** button
+  </Step>
+  
+  <Step title="View Results">
+    Table displays:
+    - Employee name
+    - Total days worked
+    - Complete days (entry + exit)
+    - Tardiness count
+    - Total hours worked
+    - Average hours per day
+    - Attendance percentage
+  </Step>
+</Steps>
+
+**Report Calculation** (`reportes.js:436-458`):
+
+```javascript
+Object.entries(porEmpleadoFecha).forEach(([userId, fechas]) => {
+  Object.values(fechas).forEach(dia => {
+    if (dia.entrada) {
+      usuariosMap[userId].totalDias++;
+
+      if (dia.salida) {
+        usuariosMap[userId].diasCompletos++;
+        
+        // Calculate hours worked
+        const [hE, mE] = dia.entrada.split(':').map(Number);
+        const [hS, mS] = dia.salida.split(':').map(Number);
+        const minutosTotal = (hS * 60 + mS) - (hE * 60 + mE);
+        usuariosMap[userId].totalHoras += minutosTotal / 60;
+      }
+
+      // Detect tardiness (after 8:30 AM)
+      const [h, m] = dia.entrada.split(':').map(Number);
+      if (h > 8 || (h === 8 && m > 30)) {
+        usuariosMap[userId].tardanzas++;
+      }
+    }
+  });
+});
+```
+
+**Attendance Percentage**:
+- ≥ 90% = Green badge (status-complete)
+- 70-89% = Yellow badge (status-incomplete)
+- < 70% = Red badge (status-absent)
+
+### Tardiness Report
+
+Focused report on late arrivals (`reportes.js:517-591`):
+
+```javascript
+// Query only "entrada" records
+const q = query(
+  collection(db, "asistencias"),
+  where("fecha", ">=", startDate),
+  where("fecha", "<=", endDate),
+  where("tipo", "==", "entrada")
+);
+
+// Filter late entries (after 8:30 AM)
+snapshot.forEach(doc => {
+  const data = doc.data();
+  if (data.hora) {
+    const [h, m] = data.hora.split(':').map(Number);
+    if (h > 8 || (h === 8 && m > 30)) {
+      const minutosTarde = (h - 8) * 60 + (m - 30);
+      tardanzas.push({
+        displayName: data.displayName,
+        fecha: data.fecha,
+        hora: data.hora,
+        minutosTarde
+      });
+    }
+  }
+});
+```
+
+**Report Output**:
+| Column | Description |
+|--------|-------------|
+| Empleado | Employee name |
+| Fecha | Date of tardiness |
+| Hora Entrada | Actual entry time |
+| Minutos Tarde | Minutes after grace period |
+
+Sorted by `minutosTarde` descending (worst offenders first).
+
+### Absence Report
+
+<Warning>
+  The absence report is currently in development (`reportes.js:593-597`).
+</Warning>
+
+## Payroll Reports
+
+### Monthly Payroll Summary
+
+Comprehensive payroll overview for a specific month (`reportes.js:930-1093`):
+
+<Steps>
+  <Step title="Select Report">
+    Click **Resumen Mensual de Nómina** card
+  </Step>
+  
+  <Step title="Choose Period">
+    Select month from dropdown
+  </Step>
+  
+  <Step title="Optional Filter">
+    Select specific employee or leave as "Todos"
+  </Step>
+  
+  <Step title="Generate">
+    Click **Generar Reporte**
+  </Step>
+</Steps>
+
+**Report Query**:
+
+```javascript
+const [year, monthNum] = month.split('-');
+const periodoPago = `${year}-${monthNum}`;
+
+const q = query(
+  collection(db, "pagos_empleados"),
+  where("periodo_pago", "==", periodoPago)
+);
+```
+
+**Report Table**:
+
+| Column | Source | Description |
+|--------|--------|-------------|
+| Empleado | `usuario.nombre + apellido` | Employee name and email |
+| Rol | `usuario.rol` | Job position |
+| Salario | `pagos_empleados.salario` | Base monthly salary |
+| Bonos | `pagos_empleados.bono` | Additional bonuses |
+| Deducciones | `pagos_empleados.deduccion` | Withholdings |
+| Total Neto | `pagos_empleados.pago_total` | Final payment amount |
+
+**Summary Row**:
+```javascript
+totalSalarios = Σ salario;
+totalBonos = Σ bono;
+totalDeducciones = Σ deduccion;
+totalNeto = Σ pago_total;
+```
+
+### Employee Payment History
+
+Detailed payment history for a specific employee (`reportes.js:1142-1284`):
+
+**Filter Options**:
+- **Specific Month**: Single period (YYYY-MM)
+- **Date Range**: Start and end months
+- **All Time**: Complete payment history
+
+**Implementation**:
+
+```javascript
+const selectedRange = document.querySelector('input[name="periodRangeEmployee"]:checked').value;
+
+if (selectedRange === 'specific') {
+  const mes = document.getElementById('employeeFilterMonth').value;
+  pagos = await obtenerPagosEmpleado(empleadoId, mes);
+} else if (selectedRange === 'all') {
+  const q = query(
+    collection(db, "pagos_empleados"),
+    where("uid", "==", empleadoId)
+  );
+  // Get all payments
+} else if (selectedRange === 'range') {
+  const mesInicio = document.getElementById('employeeFilterStartMonth').value;
+  const mesFin = document.getElementById('employeeFilterEndMonth').value;
+  // Get payments in range
+}
+```
+
+**Report Table**:
+
+| Column | Description |
+|--------|-------------|
+| Período | Month/Year ("Mar 2026") |
+| Salario | Base salary amount |
+| Bonos | Bonus amount |
+| Deducciones | Deduction amount |
+| Total Neto | Final payment |
+| Detalle | Payment notes |
+
+**Totals Row**:
+- Sums all columns across the selected date range
+
+### Comparative Payroll Report
+
+Compare payroll across multiple months (`reportes.js:1285+`):
+
+**Comparison Types**:
+1. **Two Specific Months**: Compare Mes 1 vs Mes 2
+2. **Date Range**: Multiple consecutive months
+3. **Yearly**: Compare same month across years
+
+<Tabs>
+  <Tab title="Two Months">
+    ```javascript
+    const mes1 = document.getElementById('comparativeMonth1').value;
+    const mes2 = document.getElementById('comparativeMonth2').value;
+    
+    // Get payments for both months
+    const pagos1 = await obtenerPagosRango(mes1, mes1);
+    const pagos2 = await obtenerPagosRango(mes2, mes2);
+    
+    // Calculate totals for each
+    const data = {
+      [mes1]: { cantidad, salario, bono, deduccion, total },
+      [mes2]: { cantidad, salario, bono, deduccion, total }
+    };
+    ```
+  </Tab>
+  
+  <Tab title="Date Range">
+    ```javascript
+    const mesInicio = document.getElementById('comparativeRangeStart').value;
+    const mesFin = document.getElementById('comparativeRangeEnd').value;
+    
+    const pagos = await obtenerPagosRango(mesInicio, mesFin);
+    
+    // Group by period
+    pagos.forEach(pago => {
+      if (!groupedByPeriod[pago.periodo_pago]) {
+        groupedByPeriod[pago.periodo_pago] = [];
+      }
+      groupedByPeriod[pago.periodo_pago].push(pago);
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Yearly">
+    ```javascript
+    const year1 = document.getElementById('comparativeYear1').value;
+    const year2 = document.getElementById('comparativeYear2').value;
+    
+    // Compare all 12 months of both years
+    for (let month = 1; month <= 12; month++) {
+      const mes1 = `${year1}-${String(month).padStart(2, '0')}`;
+      const mes2 = `${year2}-${String(month).padStart(2, '0')}`;
+      // Get and compare
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Export Functionality
+
+### Excel Export
+
+The `exportToExcel()` function (`reportes.js:619-772`) supports all report types:
+
+```javascript
+window.exportToExcel = function () {
+  if (!currentReportData) {
+    alert('No hay datos para exportar');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  let data = [];
+  let sheetName = 'Reporte';
+
+  // Prepare data based on report type
+  if (currentReportData.type === 'asistencia-mensual') {
+    sheetName = 'Resumen Mensual';
+    data.push(['Empleado', 'Total Días', 'Días Completos', 'Tardanzas', ...]);
+    Object.values(currentReportData.data).forEach(stats => {
+      data.push([stats.displayName, stats.totalDias, ...]);
+    });
+  } else if (currentReportData.type === 'tardanzas') {
+    sheetName = 'Tardanzas';
+    data.push(['Empleado', 'Fecha', 'Hora Entrada', 'Minutos Tarde']);
+    currentReportData.data.forEach(t => {
+      data.push([t.displayName, t.fecha, t.hora, t.minutosTarde]);
+    });
+  } else if (currentReportData.type === 'nomina-mensual') {
+    // Payroll export with totals
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `reporte_${currentReportData.type}_${currentReportData.month}.xlsx`);
+};
+```
+
+**Excel Features**:
+- Automatic column headers
+- Summary totals for payroll reports
+- Descriptive sheet names
+- Date-stamped filenames
+
+### PDF Export
+
+Basic PDF generation using jsPDF (`reportes.js:600-616`):
+
+```javascript
+window.exportToPDF = function () {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(18);
+  doc.text('TextileFlow ERP - Reporte', 14, 20);
+  doc.setFontSize(12);
+  doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES')}`, 14, 30);
+
+  // Additional content based on currentReportData
+
+  doc.save(`reporte_${currentReportData.type}_${currentReportData.month}.pdf`);
+};
+```
+
+<Note>
+  PDF export is currently basic. Future versions will include formatted tables using jsPDF-AutoTable.
+</Note>
+
+### Print Functionality
+
+Direct browser print (`reportes.js:775-784`):
+
+```javascript
+window.printReport = function () {
+  const printableArea = document.getElementById('printableArea');
+  if (!printableArea) {
+    alert('No hay contenido para imprimir');
+    return;
+  }
+  window.print();
+};
+```
+
+The `printableArea` div contains formatted report content that responds to `@media print` CSS rules.
+
+## Chart Visualizations
+
+### Dashboard Charts
+
+The module includes dashboard charts when loaded (`reportes.js:118-251`):
+
+**Attendance Chart** (Last 7 days):
+```javascript
+const ctxAttendance = document.getElementById('dashboardAttendanceChart');
+new Chart(ctxAttendance, {
+  type: 'bar',
+  data: {
+    labels: ['Lun 1', 'Mar 2', 'Mié 3', ...],
+    datasets: [
+      {
+        label: 'Completos',
+        data: dataCompletos,
+        backgroundColor: 'rgba(16, 185, 129, 0.8)'
+      },
+      {
+        label: 'Incompletos',
+        data: dataIncompletos,
+        backgroundColor: 'rgba(245, 158, 11, 0.8)'
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+  }
+});
+```
+
+**Payroll Chart** (Last 6 months):
+```javascript
+const ctxPayroll = document.getElementById('dashboardPayrollChart');
+new Chart(ctxPayroll, {
+  type: 'line',
+  data: {
+    labels: ['Ene', 'Feb', 'Mar', ...],
+    datasets: [{
+      label: 'Nómina Mensual',
+      data: nominaData,
+      borderColor: 'rgba(102, 126, 234, 1)',
+      backgroundColor: 'rgba(102, 126, 234, 0.1)',
+      fill: true,
+      tension: 0.4
+    }]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: {
+        ticks: {
+          callback: function(value) {
+            return '$' + value.toLocaleString();
+          }
+        }
+      }
+    }
+  }
+});
+```
+
+## Report Data Structure
+
+### Current Report Data
+
+The global `currentReportData` object stores active report info for export:
+
+```typescript
+interface CurrentReportData {
+  type: 'asistencia-mensual' | 'tardanzas' | 'nomina-mensual' | 'por-empleado' | 'comparativo';
+  month?: string;  // "YYYY-MM"
+  data: any;  // Report-specific data structure
+  totales?: {
+    salarios?: number;
+    bonos?: number;
+    deducciones?: number;
+    neto?: number;
+    cantidad?: number;
+  };
+  meses?: string[];  // For comparative reports
+  empleado?: string;  // For employee-specific reports
+}
+```
+
+## Helper Functions
+
+### Month Name Formatting
+
+```javascript
+function formatMonthName(mesYao) {
+  const [year, month] = mesYao.split('-').map(Number);
+  const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  return `${meses[month - 1]} ${year}`;
+}
+// Input: "2026-03" → Output: "Marzo 2026"
+```
+
+### Loading Employee Filter
+
+```javascript
+async function loadEmployeeFilter() {
+  const select = document.getElementById('filterEmployee');
+  const snapshot = await getDocs(collection(db, "usuario"));
+  
+  let optionsHtml = '<option value="">Todos los empleados</option>';
+  snapshot.forEach(doc => {
+    const user = doc.data();
+    const displayName = user.displayName || `${user.nombre} ${user.apellido}` || user.email;
+    optionsHtml += `<option value="${doc.id}">${displayName}</option>`;
+  });
+  
+  select.innerHTML = optionsHtml;
+}
+```
+
+## UI Components
+
+### Report Selection Cards
+
+```html
+<div class="report-cards">
+  <div class="report-card" onclick="selectReport('asistencia-mensual')">
+    <i class="fas fa-calendar-check"></i>
+    <h3>Asistencia Mensual</h3>
+    <p>Resumen completo de asistencias del mes</p>
+  </div>
+  <div class="report-card" onclick="selectReport('tardanzas')">
+    <i class="fas fa-clock"></i>
+    <h3>Tardanzas</h3>
+    <p>Registro de llegadas tardías</p>
+  </div>
+</div>
+```
+
+### Filter Panel
+
+```html
+<div class="filters-section">
+  <div class="filter-group">
+    <label for="filterMonth">Mes:</label>
+    <input type="month" id="filterMonth" />
+  </div>
+  <div class="filter-group">
+    <label for="filterEmployee">Empleado:</label>
+    <select id="filterEmployee">
+      <option value="">Todos los empleados</option>
+    </select>
+  </div>
+  <button class="btn-primary" onclick="generateReport()">
+    <i class="fas fa-sync"></i> Generar Reporte
+  </button>
+</div>
+```
+
+### Export Button Group
+
+```html
+<div id="exportButtons" class="export-buttons" style="display: none;">
+  <button class="btn-secondary" onclick="exportToPDF()">
+    <i class="fas fa-file-pdf"></i> Exportar PDF
+  </button>
+  <button class="btn-secondary" onclick="exportToExcel()">
+    <i class="fas fa-file-excel"></i> Exportar Excel
+  </button>
+  <button class="btn-secondary" onclick="printReport()">
+    <i class="fas fa-print"></i> Imprimir
+  </button>
+</div>
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Date Range Selection" icon="calendar-range">
+    Use reasonable date ranges to avoid performance issues with large datasets
+  </Card>
+  <Card title="Export Before Changing Filters" icon="download">
+    Export or print before changing filters, as it clears the current report
+  </Card>
+  <Card title="Regular Backups" icon="database">
+    Export critical reports to Excel monthly for offline archiving
+  </Card>
+  <Card title="Chart Interpretation" icon="chart-simple">
+    Use dashboard charts for quick trend analysis before generating detailed reports
+  </Card>
+</CardGroup>
+
+## Common Workflows
+
+### Monthly Attendance Review
+
+<Steps>
+  <Step title="Generate Monthly Report">
+    Reports → Asistencias → Asistencia Mensual → Select month → Generate
+  </Step>
+  
+  <Step title="Review Attendance %">
+    Check which employees have < 90% attendance
+  </Step>
+  
+  <Step title="Generate Tardiness Report">
+    Switch to Tardanzas report for same month
+  </Step>
+  
+  <Step title="Export for Records">
+    Export both reports to Excel for HR files
+  </Step>
+</Steps>
+
+### End-of-Month Payroll Reporting
+
+<Steps>
+  <Step title="Generate Payroll Summary">
+    Reports → Nómina → Resumen Mensual → Select month → Generate
+  </Step>
+  
+  <Step title="Verify Totals">
+    Check that total matches expected payroll budget
+  </Step>
+  
+  <Step title="Individual Reports">
+    Generate employee-specific reports for any questions
+  </Step>
+  
+  <Step title="Export and Archive">
+    Export to PDF and Excel for accounting records
+  </Step>
+</Steps>
+
+## Related Modules
+
+- [Attendance Management](/features/attendance) - Source data for attendance reports
+- [Payroll Management](/features/payroll) - Source data for payroll reports
+- [Human Resources](/features/human-resources) - Employee data for all reports
+
+## Code Reference
+
+**Key Functions**:
+- `generateReport()` - reportes.js:326
+- `generateMonthlyAttendanceReport()` - reportes.js:385
+- `generatePayrollReport()` - reportes.js:930
+- `exportToExcel()` - reportes.js:619
+- `loadEmployeeFilter()` - reportes.js:254

@@ -1,0 +1,448 @@
+---
+title: Schedule Configuration
+description: Configure work schedules, tolerance times, and attendance tracking parameters
+---
+
+## Overview
+
+TextileFlow ERP includes a flexible schedule management system that allows you to configure default work hours, set custom schedules for specific dates, and define tolerance periods for attendance tracking.
+
+## Schedule Data Structure
+
+Schedules are stored in the `schedules` Firestore collection:
+
+<CodeGroup>
+```json Schedule Document Schema
+{
+  "date": "2026-03-08",           // Specific date (optional)
+  "entryTime": "08:00",           // Entry time in HH:MM format
+  "exitTime": "17:00",            // Exit time in HH:MM format
+  "toleranceMinutes": 15,         // Minutes of tolerance for late entry
+  "workHours": 8,                 // Total work hours per day
+  "appliesTo": "all",             // "all" or specific employee IDs
+  "isDefault": false,             // true if this is the default schedule
+  "setBy": "admin-uid",           // UID of admin who created schedule
+  "createdAt": "2026-03-08T10:00:00Z",
+  "updatedAt": "2026-03-08T10:00:00Z"
+}
+```
+</CodeGroup>
+
+## Default Schedule
+
+### Hardcoded Default Values
+
+If no schedule is configured in Firestore, the system uses these defaults:
+
+<CodeGroup>
+```javascript Default Schedule Constants
+const DEFAULT_SCHEDULE = {
+  entryTime: '08:00',
+  exitTime: '17:00',
+  toleranceMinutes: 15,
+  workHours: 8
+};
+```
+</CodeGroup>
+
+### Setting the Default Schedule
+
+You can configure a default schedule that applies to all dates without specific schedules:
+
+<Steps>
+  <Step title="Access Configuration Module">
+    1. Log in as an administrator
+    2. Navigate to **Dashboard** → **Configuración** (Configuration)
+    3. Select the **Asistencias** tab
+  </Step>
+
+  <Step title="Configure Default Times">
+    Set the following parameters:
+    
+    - **Hora de Inicio** (Start Time): When employees should arrive (e.g., 08:00)
+    - **Hora de Fin** (End Time): When employees should leave (e.g., 17:00)
+    - **Tolerancia Tardanza** (Late Tolerance): Minutes allowed before marked as late (e.g., 15)
+    - **Tiempo de Almuerzo** (Lunch Time): Break duration in minutes (e.g., 60)
+  </Step>
+
+  <Step title="Configure Work Days">
+    Select which days of the week are work days:
+    
+    - ☑️ Monday (1)
+    - ☑️ Tuesday (2)
+    - ☑️ Wednesday (3)
+    - ☑️ Thursday (4)
+    - ☑️ Friday (5)
+    - ☐ Saturday (6)
+    - ☐ Sunday (0)
+  </Step>
+
+  <Step title="Save Configuration">
+    Click **Guardar** to save the default schedule
+  </Step>
+</Steps>
+
+### Programmatic Default Schedule Creation
+
+<CodeGroup>
+```javascript Set Default Schedule
+import scheduleService from '/src/modules/asistencia/services/scheduleService.js';
+
+async function setDefaultSchedule() {
+  const result = await scheduleService.setDefaultSchedule(
+    'admin-uid',      // Admin user ID
+    '08:00',          // Entry time
+    '17:00',          // Exit time
+    15                // Tolerance in minutes
+  );
+
+  if (result.success) {
+    console.log('Default schedule set successfully');
+  } else {
+    console.error('Error:', result.error);
+  }
+}
+```
+</CodeGroup>
+
+## Custom Schedules for Specific Dates
+
+You can create custom schedules for specific dates (e.g., holidays, special shifts, shortened days).
+
+### Creating a Date-Specific Schedule
+
+<CodeGroup>
+```javascript Set Schedule for Date
+import scheduleService from '/src/modules/asistencia/services/scheduleService.js';
+
+async function setHolidaySchedule() {
+  const result = await scheduleService.setScheduleForDate(
+    'admin-uid',       // Admin user ID
+    '2026-12-25',      // Date (YYYY-MM-DD)
+    '09:00',           // Entry time
+    '13:00',           // Exit time (half day)
+    30,                // Tolerance (30 minutes)
+    'all'              // Applies to all employees
+  );
+
+  if (result.success) {
+    console.log('Holiday schedule created');
+  }
+}
+```
+</CodeGroup>
+
+### Schedule Priority
+
+The system looks for schedules in this order:
+
+1. **Date-specific schedule** (`date` field matches)
+2. **Default schedule** (`isDefault: true`)
+3. **Hardcoded defaults** (if nothing is configured)
+
+<Note>
+  Date-specific schedules always take precedence over the default schedule.
+</Note>
+
+## Schedule Service API
+
+The schedule service provides methods for managing schedules:
+
+### Get Schedule for Date
+
+<CodeGroup>
+```javascript Get Schedule
+import scheduleService from '/src/modules/asistencia/services/scheduleService.js';
+
+async function getTodaySchedule() {
+  const today = new Date().toISOString().split('T')[0];
+  const schedule = await scheduleService.getScheduleForDate(today);
+  
+  console.log('Today\'s schedule:', schedule);
+  // Returns: { entryTime: '08:00', exitTime: '17:00', ... }
+}
+```
+</CodeGroup>
+
+### Get Default Schedule
+
+<CodeGroup>
+```javascript Get Default
+const defaultSchedule = await scheduleService.getDefaultSchedule();
+console.log('Default schedule:', defaultSchedule);
+```
+</CodeGroup>
+
+### Get Custom Schedules
+
+<CodeGroup>
+```javascript Get Custom Schedules
+const result = await scheduleService.getCustomSchedules(
+  '2026-03-01',  // Start date
+  '2026-03-31'   // End date
+);
+
+if (result.success) {
+  console.log('Custom schedules:', result.data);
+}
+```
+</CodeGroup>
+
+## Tolerance and Validation
+
+### Late Entry Detection
+
+The system automatically detects late entries based on the tolerance period:
+
+<CodeGroup>
+```javascript Check If Late
+import scheduleService from '/src/modules/asistencia/services/scheduleService.js';
+
+const isLate = scheduleService.isLate(
+  '08:20',  // Actual entry time
+  '08:00',  // Scheduled entry time
+  15        // Tolerance in minutes
+);
+
+// Returns: true (20 minutes late > 15 minutes tolerance)
+```
+</CodeGroup>
+
+### Early Exit Detection
+
+<CodeGroup>
+```javascript Check If Early
+const isEarly = scheduleService.isEarly(
+  '16:30',  // Actual exit time
+  '17:00',  // Scheduled exit time
+  15        // Tolerance in minutes
+);
+
+// Returns: true (30 minutes early > 15 minutes tolerance)
+```
+</CodeGroup>
+
+### Time Difference Calculation
+
+<CodeGroup>
+```javascript Calculate Time Difference
+const difference = scheduleService.getTimeDifference(
+  '08:20',  // Time 1
+  '08:00'   // Time 2
+);
+
+// Returns: 20 (minutes)
+```
+</CodeGroup>
+
+## Configuration Module Integration
+
+The Configuration module (`configuracion.js`) manages schedule settings stored in Firestore:
+
+### Asistencias Configuration Document
+
+<CodeGroup>
+```json configuracion_sistema/asistencias
+{
+  "horaInicio": "08:30",
+  "horaFin": "17:30",
+  "toleranciaTardanza": 10,
+  "tiempoAlmuerzo": 60,
+  "diasLaborales": [1, 2, 3, 4, 5],  // Monday to Friday
+  "permitirHorasExtras": true,
+  "notificarTardanzas": true,
+  "fechaActualizacion": "2026-03-08T10:00:00Z"
+}
+```
+</CodeGroup>
+
+### Loading Configuration
+
+<CodeGroup>
+```javascript Load Attendance Settings
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '/src/config/firebase.js';
+
+async function loadAsistenciasSettings() {
+  const docRef = doc(db, "configuracion_sistema", "asistencias");
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    
+    // Apply settings to form or application
+    console.log('Work start time:', data.horaInicio);
+    console.log('Work end time:', data.horaFin);
+    console.log('Late tolerance:', data.toleranciaTardanza, 'minutes');
+  }
+}
+```
+</CodeGroup>
+
+## Work Hours Calculation
+
+Work hours are automatically calculated based on entry and exit times:
+
+<CodeGroup>
+```javascript Calculate Work Hours
+function calculateWorkHours(entryTime, exitTime) {
+  const [entryH, entryM] = entryTime.split(':').map(Number);
+  const [exitH, exitM] = exitTime.split(':').map(Number);
+  
+  const entryMinutes = entryH * 60 + entryM;
+  const exitMinutes = exitH * 60 + exitM;
+  
+  const workHours = (exitMinutes - entryMinutes) / 60;
+  
+  return workHours;
+}
+
+// Example:
+calculateWorkHours('08:00', '17:00'); // Returns: 9
+calculateWorkHours('08:00', '12:00'); // Returns: 4
+```
+</CodeGroup>
+
+<Note>
+  The work hours calculation does not account for breaks. You may need to subtract lunch time separately.
+</Note>
+
+## Use Cases and Examples
+
+### Example 1: Standard 8-Hour Workday
+
+<CodeGroup>
+```javascript Standard Schedule
+const standardSchedule = {
+  entryTime: '08:00',
+  exitTime: '17:00',      // 9 hours
+  toleranceMinutes: 15,
+  workHours: 8            // 8 hours work (1 hour lunch)
+};
+```
+</CodeGroup>
+
+### Example 2: Half-Day Friday
+
+<CodeGroup>
+```javascript Friday Schedule
+await scheduleService.setScheduleForDate(
+  adminId,
+  '2026-03-14',    // Next Friday
+  '08:00',
+  '13:00',         // Half day
+  15,
+  'all'
+);
+```
+</CodeGroup>
+
+### Example 3: Holiday with No Work
+
+<CodeGroup>
+```javascript Holiday
+await scheduleService.setScheduleForDate(
+  adminId,
+  '2026-12-25',    // Christmas
+  '00:00',
+  '00:00',         // No work hours
+  0,
+  'all'
+);
+```
+</CodeGroup>
+
+### Example 4: Night Shift
+
+<CodeGroup>
+```javascript Night Shift
+await scheduleService.setScheduleForDate(
+  adminId,
+  '2026-03-15',
+  '22:00',         // 10 PM
+  '06:00',         // 6 AM next day
+  15,
+  'night-shift-employees'
+);
+```
+</CodeGroup>
+
+<Warning>
+  Cross-midnight schedules (e.g., 22:00 to 06:00) may require special handling in your attendance calculations.
+</Warning>
+
+## Attendance Integration
+
+Schedules are used by the Attendance module to:
+
+1. **Validate entry times** - Mark employees as late if they exceed tolerance
+2. **Validate exit times** - Mark early departures
+3. **Calculate worked hours** - Compare actual vs. scheduled hours
+4. **Generate reports** - Show tardiness and absence statistics
+5. **Calculate payroll** - Determine regular hours, overtime, and deductions
+
+## Best Practices
+
+<Steps>
+  <Step title="Set a Realistic Default Schedule">
+    Configure a default schedule that matches your normal business hours. This avoids the need to create date-specific schedules for every day.
+  </Step>
+
+  <Step title="Plan Ahead for Special Days">
+    Create custom schedules for holidays, half-days, and special events in advance.
+  </Step>
+
+  <Step title="Use Appropriate Tolerance">
+    Set tolerance periods that balance flexibility with accountability:
+    - 5-10 minutes: Strict
+    - 15 minutes: Standard
+    - 30 minutes: Lenient
+  </Step>
+
+  <Step title="Document Your Schedule Policy">
+    Communicate schedule policies clearly to all employees, including:
+    - Standard work hours
+    - Tolerance periods
+    - Consequences of repeated tardiness
+    - Holiday schedule
+  </Step>
+
+  <Step title="Review and Adjust">
+    Regularly review attendance data and adjust schedules as needed based on business requirements.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Issue: Wrong Schedule Applied
+
+**Possible causes:**
+- Multiple schedules exist for the same date
+- Date format mismatch (should be YYYY-MM-DD)
+- Timezone issues
+
+**Solution:**
+1. Check Firestore for duplicate schedules
+2. Ensure dates are in YYYY-MM-DD format
+3. Verify only one schedule has `isDefault: true`
+
+### Issue: Attendance Not Marked as Late
+
+**Solution:**
+1. Verify tolerance period is set correctly
+2. Check that schedule exists for that date
+3. Review time comparison logic in attendance service
+
+### Issue: Configuration Changes Not Saved
+
+**Solution:**
+1. Check Firestore security rules allow writes
+2. Verify admin permissions
+3. Check browser console for errors
+4. Ensure document ID is `configuracion_sistema/asistencias`
+
+## Next Steps
+
+- [Learn about the Attendance module](/features/attendance)
+- [Configure deployment settings](/configuration/deployment)
+- [Explore HR management features](/features/human-resources)

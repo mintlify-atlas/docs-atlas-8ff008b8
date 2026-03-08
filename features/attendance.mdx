@@ -1,0 +1,569 @@
+---
+title: 'Attendance Management'
+description: 'Employee time tracking with customizable schedules and tardiness detection'
+icon: 'clock'
+---
+
+## Overview
+
+The Attendance (Asistencias) module provides comprehensive employee time tracking with clock-in/clock-out functionality, customizable work schedules, tardiness detection, and detailed reporting.
+
+<Note>
+  The system uses Lima, Peru timezone (America/Lima) for all attendance records to ensure consistent time tracking.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Self Check-In" icon="clock-rotate-left">
+    Employees can mark their own entry and exit times from their dashboard
+  </Card>
+  <Card title="Admin Oversight" icon="user-shield">
+    Administrators can view all attendance, register manual entries, and edit records
+  </Card>
+  <Card title="Schedule Management" icon="calendar-days">
+    Configurable default schedules plus custom schedules per day or employee
+  </Card>
+  <Card title="Tardiness Detection" icon="hourglass-end">
+    Automatic late detection with configurable tolerance minutes
+  </Card>
+</CardGroup>
+
+## Module Architecture
+
+### Core Files
+
+- **JavaScript**: `public/js/asistencias.js` (1,400+ lines)
+- **Service**: `public/src/modules/asistencia/services/attendanceService.js` (488 lines)
+- **Database Collections**: `asistencias`, `configuracion`, `attendance_summary`
+
+### User Roles
+
+| Role | Capabilities |
+|------|-------------|
+| **Employee** | Mark own entry/exit, view personal history |
+| **Administrator** | View all attendance, manual registration, schedule config, edit records |
+
+## Attendance Recording
+
+### Employee Self Check-In
+
+Employees mark their attendance from their dashboard:
+
+```javascript
+// From asistencias.js:240-271
+async function marcarAsistencia(tipo) {
+  const hoy = new Date().toISOString().split('T')[0];
+  const hora = new Date().toTimeString().slice(0, 5);
+
+  const docId = `${currentUser.uid}_${hoy}_${tipo}`;
+
+  await setDoc(doc(db, "asistencias", docId), {
+    userId: currentUser.uid,
+    displayName: currentUser.displayName,
+    fecha: hoy,  // YYYY-MM-DD
+    hora: hora,  // HH:MM
+    tipo: tipo,  // "entrada" or "salida"
+    timestamp: Timestamp.fromDate(new Date()),
+    source: "self",
+    createdAt: serverTimestamp()
+  });
+}
+```
+
+<Steps>
+  <Step title="Access Dashboard">
+    Employee logs in and sees attendance widget with current status
+  </Step>
+  
+  <Step title="Mark Entry">
+    Click **Marcar Entrada** button
+    - System records current time in Lima timezone
+    - Button becomes disabled
+    - Exit button becomes enabled
+  </Step>
+  
+  <Step title="Mark Exit">
+    Click **Marcar Salida** button when leaving
+    - System records exit time
+    - Both buttons become disabled
+    - Daily record is complete
+  </Step>
+</Steps>
+
+### Manual Registration (Admin)
+
+Administrators can register attendance for employees:
+
+```javascript
+// From asistencias.js:277-318
+const docId = `${employeeId}_${fecha}_${tipo}`;
+
+await setDoc(doc(db, "asistencias", docId), {
+  userId: employeeId,
+  displayName: employeeName,
+  fecha: fecha,
+  hora: hora,
+  tipo: tipo,
+  timestamp: Timestamp.fromDate(new Date(`${fecha}T${hora}:00`)),
+  source: "manual",
+  registeredBy: currentUser.uid,
+  createdAt: serverTimestamp()
+});
+```
+
+<Warning>
+  Manual registrations are marked with `source: "manual"` and include `registeredBy` field for audit trail.
+</Warning>
+
+## Schedule Configuration
+
+### Default Schedule
+
+Stored in `configuracion/horario_default` collection:
+
+```javascript
+let defaultSchedule = {
+  horaEntrada: "08:00",
+  horaSalida: "17:00",
+  tolerancia: 15  // minutes
+};
+```
+
+### Custom Schedules
+
+Stored in `configuracion/horarios_personalizados` collection:
+
+```javascript
+customSchedules = {
+  "lunes": { horaEntrada: "09:00", horaSalida: "18:00", tolerancia: 10 },
+  "viernes": { horaEntrada: "08:00", horaSalida: "16:00", tolerancia: 15 }
+};
+```
+
+### Schedule Priority
+
+The system applies schedules in this order (`asistencias.js:113-126`):
+
+1. **Employee-specific schedule** (if `employeeSchedules[userId].activo`)
+2. **Day-of-week custom schedule** (e.g., "lunes", "martes")
+3. **Default schedule** (fallback)
+
+## Tardiness Detection
+
+### Automatic Late Marking
+
+The system calculates tardiness when displaying attendance (`asistencias.js:410-424`):
+
+```javascript
+if (emp.horaEntrada) {
+  const [horaInicioH, horaInicioM] = horaInicio.split(':').map(Number);
+  const minutosInicio = horaInicioH * 60 + horaInicioM + tolerancia;
+
+  const [h, m] = emp.horaEntrada.split(':').map(Number);
+  const minutosEntrada = h * 60 + m;
+
+  if (minutosEntrada > minutosInicio) {
+    esTarde = true;
+    tardanzas++;
+    statusClass = "late";
+  }
+}
+```
+
+**Example**:
+- Default entry time: 08:00
+- Tolerance: 15 minutes
+- Grace period until: 08:15
+- Entry at 08:20 = **Late** (5 minutes over tolerance)
+
+## Today's Attendance View (Admin)
+
+### Real-Time Dashboard
+
+Administrators see live attendance data (`asistencias.js:321-451`):
+
+| Column | Description | Calculation |
+|--------|-------------|-------------|
+| Nombre | Employee name | From `usuario` collection |
+| Hora Inicio | Scheduled entry | From applicable schedule |
+| Entrada | Actual entry time | From attendance record |
+| Hora Fin | Scheduled exit | From applicable schedule |
+| Salida | Actual exit time | From attendance record |
+| Horas | Hours worked | `(exitTime - entryTime) / 60` |
+| Estado | Status badge | Completo/Incompleto/Tarde/Ausente |
+| Acciones | Edit button | Opens edit modal |
+
+### Status Badges
+
+<Tabs>
+  <Tab title="Completo">
+    **Green badge**: Employee has entry and exit recorded
+    - Both timestamps present
+    - Hours worked calculated
+    - Counts toward "presentes"
+  </Tab>
+  
+  <Tab title="Incompleto">
+    **Yellow badge**: Entry recorded but no exit
+    - Missing exit timestamp
+    - Still counted as present
+    - Hours shows "--"
+  </Tab>
+  
+  <Tab title="Tarde">
+    **Orange badge**: Arrived after grace period
+    - Entry time > (scheduled + tolerance)
+    - Increments tardiness counter
+    - Overrides other statuses
+  </Tab>
+  
+  <Tab title="Ausente">
+    **Red badge**: No entry recorded
+    - Employee not in attendance list
+    - Calculated as: total employees - present
+  </Tab>
+</Tabs>
+
+### Statistics Cards
+
+The dashboard displays four key metrics (`asistencias.js:501-520`):
+
+```javascript
+function actualizarEstadisticas(total, presentes, tardanzas, ausentes) {
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statPresent").textContent = presentes;
+  document.getElementById("statLate").textContent = tardanzas;
+  document.getElementById("statAbsent").textContent = ausentes;
+}
+```
+
+## Attendance History
+
+### General History (Admin)
+
+Administrators can view attendance history with filters (`asistencias.js:652-717`):
+
+**Filter Options**:
+- **Date range**: Last 7, 14, 30 days, or custom
+- **Employee**: Specific employee or all
+- **Status**: Complete, Incomplete, Absent, or all
+
+### Grouped View
+
+Without filters, history groups by date (`asistencias.js:841-931`):
+
+```html
+<div class="history-date-group">
+  <div class="history-date-header">
+    <h4>Lunes, 8 de marzo de 2026</h4>
+    <div class="history-date-summary">15/20 completos</div>
+  </div>
+  <div class="history-date-content">
+    <!-- Collapsible table -->
+  </div>
+</div>
+```
+
+### Filtered View
+
+With filters, displays simple table (`asistencias.js:758-839`):
+
+```javascript
+function renderSimpleHistoryTable(data, employeeFilter) {
+  // Show print button
+  // Display flat table with all matching records
+  // Enable print functionality
+}
+```
+
+## Employee Personal History
+
+Employees see their own attendance history (`asistencias.js:1312-1382`):
+
+```javascript
+async function loadEmployeeHistory(days = 7) {
+  const q = query(
+    collection(db, "asistencias"),
+    where("userId", "==", currentUser.uid),
+    where("fecha", ">=", fechaInicioStr)
+  );
+  
+  // Group by date and calculate hours
+  // Display in personal dashboard
+}
+```
+
+**Employee History Table**:
+- Fecha
+- Entrada
+- Salida
+- Horas (calculated)
+- Estado
+
+## Editing Attendance Records
+
+### Edit Modal
+
+Administrators can edit existing records (`asistencias.js:573-587`):
+
+```javascript
+window.openEditModal = function (userId, entryTime, exitTime) {
+  document.getElementById("editUserId").value = userId;
+  document.getElementById("editEntryTime").value = entryTime !== "--:--" ? entryTime : "";
+  document.getElementById("editExitTime").value = exitTime !== "--:--" ? exitTime : "";
+  document.getElementById("editAttendanceModal").classList.add("active");
+};
+```
+
+### Update Process
+
+<Steps>
+  <Step title="Open Edit Modal">
+    Click **Editar** button on attendance row
+  </Step>
+  
+  <Step title="Modify Times">
+    Change entry time and/or exit time
+  </Step>
+  
+  <Step title="Save Changes">
+    System updates both attendance documents:
+    ```javascript
+    await setDoc(doc(db, "asistencias", `${userId}_${hoy}_entrada`), {
+      hora: newEntryTime,
+      source: "manual_edit",
+      editedBy: currentUser.uid,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Edited records are marked with `source: "manual_edit"` and include `editedBy` and `updatedAt` fields.
+</Warning>
+
+## Charts and Analytics
+
+### Weekly Attendance Chart
+
+Displays last 7 days of attendance (`asistencias.js:1091-1189`):
+
+```javascript
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ['Lun 1', 'Mar 2', 'Mié 3', ...],
+    datasets: [
+      {
+        label: 'Completos',
+        data: dataCompletos,
+        backgroundColor: 'rgba(16, 185, 129, 0.8)'
+      },
+      {
+        label: 'Incompletos',
+        data: dataIncompletos,
+        backgroundColor: 'rgba(245, 158, 11, 0.8)'
+      }
+    ]
+  }
+});
+```
+
+### Tardiness Chart
+
+Horizontal bar chart of employees with most tardiness (`asistencias.js:1197-1266`):
+
+```javascript
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: empleadosConTardanzas.map(stats => stats.displayName),
+    datasets: [{
+      label: 'Tardanzas',
+      data: empleadosConTardanzas.map(stats => stats.tardanzas),
+      backgroundColor: 'rgba(239, 68, 68, 0.8)'
+    }]
+  },
+  options: { indexAxis: 'y' }  // Horizontal bars
+});
+```
+
+## Print and Export
+
+### Print History
+
+When filters are applied, print button appears (`asistencias.js:934-968`):
+
+```javascript
+window.printHistoryTable = function () {
+  const printWindow = window.open('', '', 'height=600,width=800');
+  printWindow.document.write(`
+    <style>
+      table { width: 100%; border-collapse: collapse; }
+      th { background-color: #667eea; color: white; }
+    </style>
+  `);
+  printWindow.document.write(tableContent.innerHTML);
+  printWindow.print();
+};
+```
+
+## Data Structures
+
+### Asistencias Collection
+
+```typescript
+interface Asistencia {
+  userId: string;
+  displayName: string;
+  fecha: string;  // "YYYY-MM-DD"
+  hora: string;   // "HH:MM"
+  tipo: "entrada" | "salida";
+  timestamp: Timestamp;
+  source: "self" | "manual" | "manual_edit";
+  registeredBy?: string;  // If manual
+  editedBy?: string;      // If edited
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+```
+
+### Configuracion Collection
+
+**Document ID**: `horario_default`
+```typescript
+interface HorarioDefault {
+  horaEntrada: string;   // "08:00"
+  horaSalida: string;    // "17:00"
+  tolerancia: number;    // 15 (minutes)
+}
+```
+
+**Document ID**: `horarios_personalizados`
+```typescript
+interface HorariosPersonalizados {
+  [diaSemana: string]: {
+    horaEntrada: string;
+    horaSalida: string;
+    tolerancia: number;
+  };
+  // Example:
+  // "lunes": { horaEntrada: "09:00", horaSalida: "18:00", tolerancia: 10 }
+}
+```
+
+## AttendanceService API
+
+### Service Methods
+
+The `attendanceService.js` provides structured API:
+
+```javascript
+// Mark attendance (self-registration)
+await attendanceService.markAttendance(
+  userId, userEmail, displayName, role, type, notes
+);
+
+// Register manual attendance (admin)
+await attendanceService.registerManualAttendance(
+  adminId, employeeData, date, time, type, notes
+);
+
+// Get today's attendances
+const result = await attendanceService.getTodayAttendances();
+
+// Get attendance by date
+const result = await attendanceService.getAttendancesByDate("2026-03-08");
+
+// Get user attendances in range
+const result = await attendanceService.getUserAttendances(
+  userId, startDate, endDate
+);
+
+// Update attendance
+await attendanceService.updateAttendance(
+  attendanceId, updates, adminId
+);
+```
+
+### Response Format
+
+```typescript
+interface ServiceResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Tolerance Configuration" icon="clock">
+    Set tolerance to 10-15 minutes to account for normal arrival variance
+  </Card>
+  <Card title="Schedule Updates" icon="calendar-check">
+    Update schedules at the start of each week/month to ensure accurate calculations
+  </Card>
+  <Card title="Manual Entry Auditing" icon="file-signature">
+    Always add notes when manually registering attendance for transparency
+  </Card>
+  <Card title="Regular Review" icon="eye">
+    Review tardiness reports weekly to identify patterns and address issues
+  </Card>
+</CardGroup>
+
+## Common Workflows
+
+### Setting Up Custom Schedules
+
+<Steps>
+  <Step title="Open Schedule Modal">
+    Click **Configurar Horarios** button in admin attendance view
+  </Step>
+  
+  <Step title="Configure Default">
+    Set default entry time, exit time, and tolerance for all employees
+  </Step>
+  
+  <Step title="Add Day-Specific">
+    Select day of week (e.g., "Viernes") and set custom schedule for that day
+  </Step>
+  
+  <Step title="Save Configuration">
+    Changes apply immediately to all future attendance calculations
+  </Step>
+</Steps>
+
+### Handling Absent Employees
+
+<Steps>
+  <Step title="View Today's Attendance">
+    Check dashboard for employees without entries
+  </Step>
+  
+  <Step title="Verify Absence">
+    Contact employee or check leave requests
+  </Step>
+  
+  <Step title="Register if Necessary">
+    Use manual registration if employee forgot to check in
+  </Step>
+</Steps>
+
+## Related Modules
+
+- [Human Resources](/features/human-resources) - Manage employee data
+- [Payroll](/features/payroll) - Process payments based on attendance
+- [Reports](/features/reports) - Generate attendance analytics
+
+## Code Reference
+
+**Key Functions**:
+- `marcarAsistencia()` - asistencias.js:240
+- `cargarAsistenciasHoy()` - asistencias.js:321
+- `actualizarEstadoHoy()` - asistencias.js:194
+- `loadEmployeeHistory()` - asistencias.js:1312
+- `renderWeeklyChart()` - asistencias.js:1091
