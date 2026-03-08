@@ -43,6 +43,7 @@
               "features/inventory",
               "features/attendance",
               "features/payroll",
+              "features/sales",
               "features/reports"
             ]
           },
@@ -73,7 +74,8 @@
             "pages": [
               "api/auth-service",
               "api/attendance-service",
-              "api/schedule-service"
+              "api/schedule-service",
+              "api/stats-service"
             ]
           },
           {

@@ -1,0 +1,329 @@
+---
+title: Sales Management
+description: Record and track sales transactions for products and services
+---
+
+The Sales Management module provides a flexible system for recording product sales and service transactions. It integrates with the inventory system to track stock levels and supports both registered clients and manual customer entries.
+
+## Overview
+
+The sales module (`public/pages/admin/ventas.html`) enables administrators to:
+
+- Record product-based sales with inventory integration
+- Register service-only transactions
+- Track sales by client
+- Support manual customer entry for walk-in sales
+- Generate sales reports and analytics
+- Export sales data to Excel and PDF
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Dual Mode Operations" icon="toggle-on">
+    Switch between product sales mode and service-only mode for flexible transaction recording.
+  </Card>
+  <Card title="Client Management" icon="users">
+    Select from registered clients or enter customer details manually for walk-in sales.
+  </Card>
+  <Card title="Inventory Integration" icon="boxes-stacked">
+    Automatically update stock levels when products are sold.
+  </Card>
+  <Card title="Multi-Item Transactions" icon="cart-shopping">
+    Add multiple products or services to a single sale transaction.
+  </Card>
+</CardGroup>
+
+## Sales Workflow
+
+### Recording a Product Sale
+
+<Steps>
+  <Step title="Open sales form">
+    Click **Registrar venta** button to open the sales registration modal.
+  </Step>
+  
+  <Step title="Select client">
+    Choose a registered client from the dropdown or enable manual entry for walk-in customers.
+    
+    ```javascript ventas.js
+    // Client selection modes
+    const chkClienteManual = document.getElementById("chkClienteManual");
+    const colClienteSelect = document.getElementById("colClienteSelect");
+    const colClienteInput = document.getElementById("colClienteInput");
+    ```
+  </Step>
+  
+  <Step title="Add products">
+    - Select product category
+    - Choose specific product
+    - Enter quantity
+    - View unit price and total automatically calculated
+    - Click **Agregar** to add to cart
+  </Step>
+  
+  <Step title="Review and save">
+    - Review all items in the cart
+    - Verify total amount
+    - Click **Guardar Venta** to complete the transaction
+  </Step>
+</Steps>
+
+### Recording a Service Transaction
+
+<Steps>
+  <Step title="Enable service mode">
+    Check the **Servicio** toggle to switch to service-only mode.
+    
+    ```javascript ventas.js lines
+    // Service mode listener
+    if (chkServicio) {
+        chkServicio.addEventListener("change", () => {
+            if (chkServicio.checked) {
+                colCategoria.style.display = "none";
+                colProducto.style.display = "none";
+                colServicioDesc.style.display = "block";
+            } else {
+                colCategoria.style.display = "block";
+                colProducto.style.display = "block";
+                colServicioDesc.style.display = "none";
+            }
+        });
+    }
+    ```
+  </Step>
+  
+  <Step title="Enter service details">
+    - Describe the service provided
+    - Enter the service amount manually
+  </Step>
+  
+  <Step title="Complete transaction">
+    Save the service transaction without affecting inventory levels.
+  </Step>
+</Steps>
+
+## User Interface
+
+### Sales Modal
+
+The sales registration modal includes:
+
+**Client Selection Section:**
+- Dropdown for registered clients
+- Manual entry toggle for walk-in customers
+- Customer name input field (manual mode)
+
+**Product/Service Selection:**
+- Category selector (product mode)
+- Product dropdown with stock information (product mode)
+- Service description field (service mode)
+- Quantity input
+- Unit price display
+- Manual amount input (service mode)
+
+**Shopping Cart:**
+- Items table with product, quantity, unit price, total
+- Remove item buttons
+- Running total display
+
+**Action Buttons:**
+- **Agregar**: Add item to cart
+- **Limpiar**: Clear all fields
+- **Guardar Venta**: Save complete transaction
+- **Cancelar**: Close modal without saving
+
+### Sales History Table
+
+The main sales table displays:
+
+| Column | Description |
+|--------|-------------|
+| Fecha | Transaction date and time |
+| Cliente | Customer name |
+| Tipo | Transaction type (Producto/Servicio) |
+| Items | Number of items/services |
+| Total | Total amount (S/) |
+| Estado | Transaction status |
+| Acciones | Edit, View details, Export, Delete |
+
+## Data Structure
+
+### Sale Document
+
+Sales are stored in the `ventas` Firestore collection:
+
+```typescript
+interface Venta {
+  id: string;
+  fecha: Timestamp;
+  clienteId?: string;          // If registered client
+  clienteNombre: string;        // Client name
+  tipoVenta: "producto" | "servicio";
+  items: VentaItem[];
+  total: number;
+  metodoPago?: string;
+  estado: "completada" | "pendiente" | "cancelada";
+  registradoPor: string;        // Admin user ID
+  notas?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+interface VentaItem {
+  tipo: "producto" | "servicio";
+  nombre: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  // For products
+  productoId?: string;
+  categoriaId?: string;
+  // For services
+  descripcionServicio?: string;
+}
+```
+
+## Sales Features
+
+### Client Database Integration
+
+The sales module integrates with the `usuario` collection to access registered clients:
+
+```javascript ventas.js
+const selectClientes = document.getElementById("clienteSel");
+
+// Load registered clients
+async function cargarClientes() {
+  const querySnapshot = await getDocs(
+    query(collection(db, "usuario"), where("rol", "==", "Cliente"))
+  );
+  
+  querySnapshot.forEach((doc) => {
+    const data = doc.data();
+    const option = document.createElement("option");
+    option.value = doc.id;
+    option.textContent = `${data.nombre} ${data.apellido}`;
+    selectClientes.appendChild(option);
+  });
+}
+```
+
+### Stock Management
+
+When recording product sales, the system automatically updates inventory:
+
+```javascript ventas.js
+// Update stock after sale
+await runTransaction(db, async (transaction) => {
+  const productoRef = doc(db, "articulo", productoId);
+  const productoDoc = await transaction.get(productoRef);
+  
+  if (productoDoc.exists()) {
+    const stockActual = productoDoc.data().stock;
+    transaction.update(productoRef, {
+      stock: stockActual - cantidad,
+      ultimaVenta: serverTimestamp()
+    });
+  }
+});
+```
+
+### Flexible Client Entry
+
+Support for both registered and walk-in customers:
+
+<Tabs>
+  <Tab title="Registered Client">
+    ```javascript
+    // Select from registered clients
+    const clienteId = selectClientes.value;
+    const clienteNombre = selectClientes.options[selectClientes.selectedIndex].text;
+    ```
+  </Tab>
+  
+  <Tab title="Manual Entry">
+    ```javascript
+    // Manual customer name
+    if (chkClienteManual.checked) {
+      const clienteNombre = inputClienteNombre.value;
+      // No clienteId - walk-in customer
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Export and Reporting
+
+### Excel Export
+
+Export sales data with comprehensive details:
+
+- Transaction date
+- Client information
+- Product/service details
+- Quantities and prices
+- Payment methods
+- Totals
+
+### PDF Generation
+
+Generate printable sales reports with jsPDF:
+
+```javascript ventas.js
+const { jsPDF } = window.jspdf;
+
+function generarPDFVenta(ventaData) {
+  const doc = new jsPDF();
+  
+  // Header
+  doc.setFontSize(18);
+  doc.text("TextileFlow - Comprobante de Venta", 20, 20);
+  
+  // Client info
+  doc.setFontSize(12);
+  doc.text(`Cliente: ${ventaData.clienteNombre}`, 20, 40);
+  doc.text(`Fecha: ${ventaData.fecha}`, 20, 50);
+  
+  // Items table
+  // ... table generation
+  
+  // Save
+  doc.save(`venta-${ventaData.id}.pdf`);
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always verify stock availability">
+    Before completing a product sale, check that sufficient stock is available to fulfill the order.
+  </Accordion>
+  
+  <Accordion title="Use service mode for non-inventory items">
+    Enable service mode when recording transactions that don't affect inventory, such as consulting fees or custom services.
+  </Accordion>
+  
+  <Accordion title="Keep client database updated">
+    Regularly review and update the client database to ensure accurate sales tracking and customer relationship management.
+  </Accordion>
+  
+  <Accordion title="Review sales reports regularly">
+    Generate and analyze sales reports weekly to identify trends, top-selling products, and growth opportunities.
+  </Accordion>
+</AccordionGroup>
+
+## Related Modules
+
+- [Inventory Management](/features/inventory) - Product catalog and stock levels
+- [Human Resources](/features/human-resources) - Client database management
+- [Reports](/features/reports) - Sales analytics and performance reports
+
+## Code Reference
+
+- **Main module**: `public/js/ventas.js`
+- **Admin page**: `public/pages/admin/ventas.html`
+- **Collection**: `ventas` (Firestore)
+
+<Note>
+  The sales module automatically handles stock updates through Firestore transactions to ensure data consistency and prevent overselling.
+</Note>

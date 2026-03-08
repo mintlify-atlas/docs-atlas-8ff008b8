@@ -1,0 +1,565 @@
+---
+title: Stats Service
+description: Generate attendance statistics, reports, and chart data
+---
+
+The Stats Service provides methods for calculating attendance metrics, generating summary statistics, and preparing data for visualization in charts and reports.
+
+## Overview
+
+Location: `public/src/modules/asistencia/services/statsService.js`
+
+The service handles statistical calculations for attendance data including:
+- Employee-specific statistics over date ranges
+- Company-wide attendance summaries
+- Weekly attendance trends
+- Tardiness analysis by employee
+- Data formatting for Chart.js visualizations
+
+## Methods
+
+### getEmployeeStats
+
+Calculates comprehensive attendance statistics for a specific employee over a date range.
+
+<ParamField path="userId" type="string" required>
+  The employee's unique identifier
+</ParamField>
+
+<ParamField path="startDate" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="endDate" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="success" type="boolean">
+  Whether the operation succeeded
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Statistics object
+  
+  <Expandable title="properties">
+    <ResponseField name="userId" type="string">
+      Employee identifier
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Employee display name
+    </ResponseField>
+    
+    <ResponseField name="startDate" type="string">
+      Start of period (YYYY-MM-DD)
+    </ResponseField>
+    
+    <ResponseField name="endDate" type="string">
+      End of period (YYYY-MM-DD)
+    </ResponseField>
+    
+    <ResponseField name="totalDays" type="number">
+      Total days in the period
+    </ResponseField>
+    
+    <ResponseField name="daysPresent" type="number">
+      Days with complete check-in/out
+    </ResponseField>
+    
+    <ResponseField name="daysIncomplete" type="number">
+      Days with only check-in or check-out
+    </ResponseField>
+    
+    <ResponseField name="daysAbsent" type="number">
+      Days with no attendance records
+    </ResponseField>
+    
+    <ResponseField name="daysLate" type="number">
+      Days employee arrived late
+    </ResponseField>
+    
+    <ResponseField name="daysLeftEarly" type="number">
+      Days employee left early
+    </ResponseField>
+    
+    <ResponseField name="totalHoursWorked" type="number">
+      Sum of all hours worked
+    </ResponseField>
+    
+    <ResponseField name="averageHoursPerDay" type="number">
+      Average hours worked per day present
+    </ResponseField>
+    
+    <ResponseField name="attendanceRate" type="number">
+      Percentage of days present (0-100)
+    </ResponseField>
+    
+    <ResponseField name="punctualityRate" type="number">
+      Percentage of on-time arrivals (0-100)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Usage Example:**
+
+```javascript
+import statsService from '/src/modules/asistencia/services/statsService.js';
+
+const result = await statsService.getEmployeeStats(
+  'emp123',
+  '2024-01-01',
+  '2024-01-31'
+);
+
+if (result.success) {
+  console.log(`Attendance Rate: ${result.data.attendanceRate}%`);
+  console.log(`Punctuality Rate: ${result.data.punctualityRate}%`);
+  console.log(`Total Hours: ${result.data.totalHoursWorked}`);
+}
+```
+
+---
+
+### getAllEmployeesStats
+
+Generates attendance statistics for all employees in the system over a date range.
+
+<ParamField path="startDate" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="endDate" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="success" type="boolean">
+  Whether the operation succeeded
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of employee statistics objects (same structure as getEmployeeStats)
+</ResponseField>
+
+**Usage Example:**
+
+```javascript
+const result = await statsService.getAllEmployeesStats(
+  '2024-03-01',
+  '2024-03-31'
+);
+
+if (result.success) {
+  // Sort by attendance rate
+  const sorted = result.data.sort((a, b) => 
+    b.attendanceRate - a.attendanceRate
+  );
+  
+  console.log('Top performers:', sorted.slice(0, 5));
+}
+```
+
+---
+
+### getTodaySummary
+
+Retrieves a summary of today's attendance across all employees.
+
+**No parameters required**
+
+**Returns:**
+
+<ResponseField name="success" type="boolean">
+  Whether the operation succeeded
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Today's summary statistics
+  
+  <Expandable title="properties">
+    <ResponseField name="date" type="string">
+      Today's date (YYYY-MM-DD)
+    </ResponseField>
+    
+    <ResponseField name="totalEmployees" type="number">
+      Total number of active employees
+    </ResponseField>
+    
+    <ResponseField name="checkedIn" type="number">
+      Employees who have checked in
+    </ResponseField>
+    
+    <ResponseField name="checkedOut" type="number">
+      Employees who have checked out
+    </ResponseField>
+    
+    <ResponseField name="absent" type="number">
+      Employees with no attendance record
+    </ResponseField>
+    
+    <ResponseField name="late" type="number">
+      Employees who arrived late
+    </ResponseField>
+    
+    <ResponseField name="onTime" type="number">
+      Employees who arrived on time
+    </ResponseField>
+    
+    <ResponseField name="attendanceRecords" type="array">
+      Array of today's attendance records with employee details
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Usage Example:**
+
+```javascript
+const result = await statsService.getTodaySummary();
+
+if (result.success) {
+  const { data } = result;
+  console.log(`Present: ${data.checkedIn}/${data.totalEmployees}`);
+  console.log(`Late arrivals: ${data.late}`);
+  console.log(`Absent: ${data.absent}`);
+}
+```
+
+---
+
+### getWeeklyAttendanceData
+
+Prepares attendance data formatted for Chart.js weekly visualization.
+
+<ParamField path="userId" type="string" optional>
+  Employee ID (omit for all employees)
+</ParamField>
+
+<ParamField path="startDate" type="string" required>
+  Week start date (YYYY-MM-DD)
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="success" type="boolean">
+  Whether the operation succeeded
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Chart.js compatible dataset
+  
+  <Expandable title="properties">
+    <ResponseField name="labels" type="array">
+      Array of date labels (e.g., ['Mon', 'Tue', 'Wed', ...])
+    </ResponseField>
+    
+    <ResponseField name="datasets" type="array">
+      Array of dataset objects for Chart.js
+      
+      <Expandable title="dataset structure">
+        <ResponseField name="label" type="string">
+          Dataset label (e.g., "Present", "Late", "Absent")
+        </ResponseField>
+        
+        <ResponseField name="data" type="array">
+          Array of numeric values matching labels
+        </ResponseField>
+        
+        <ResponseField name="backgroundColor" type="string">
+          Bar/line color
+        </ResponseField>
+        
+        <ResponseField name="borderColor" type="string">
+          Border color
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Usage Example:**
+
+```javascript
+const result = await statsService.getWeeklyAttendanceData(
+  null, // All employees
+  '2024-03-04' // Monday
+);
+
+if (result.success) {
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: result.data,
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+}
+```
+
+---
+
+### getLatenessByEmployee
+
+Analyzes tardiness patterns across all employees for a given period.
+
+<ParamField path="startDate" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField path="endDate" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="success" type="boolean">
+  Whether the operation succeeded
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of employee tardiness records
+  
+  <Expandable title="record structure">
+    <ResponseField name="userId" type="string">
+      Employee identifier
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Employee name
+    </ResponseField>
+    
+    <ResponseField name="lateCount" type="number">
+      Number of late arrivals
+    </ResponseField>
+    
+    <ResponseField name="totalDays" type="number">
+      Total days in period
+    </ResponseField>
+    
+    <ResponseField name="lateRate" type="number">
+      Percentage of late arrivals (0-100)
+    </ResponseField>
+    
+    <ResponseField name="averageDelayMinutes" type="number">
+      Average minutes late per late arrival
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Usage Example:**
+
+```javascript
+const result = await statsService.getLatenessByEmployee(
+  '2024-01-01',
+  '2024-03-31'
+);
+
+if (result.success) {
+  // Find employees with high tardiness
+  const problematic = result.data.filter(emp => 
+    emp.lateRate > 20 // More than 20% late arrivals
+  );
+  
+  console.log('Employees needing attention:', problematic);
+}
+```
+
+---
+
+## Implementation Details
+
+### Data Aggregation
+
+The service aggregates data from two primary collections:
+
+1. **`attendances`** - Individual check-in/check-out records
+2. **`attendance_summary`** - Pre-calculated daily summaries
+
+```javascript statsService.js
+async function getEmployeeStats(userId, startDate, endDate) {
+  // Query attendance records
+  const q = query(
+    collection(db, 'attendances'),
+    where('userId', '==', userId),
+    where('date', '>=', startDate),
+    where('date', '<=', endDate),
+    orderBy('date', 'asc')
+  );
+
+  const snapshot = await getDocs(q);
+
+  // Group by date and calculate metrics
+  const attendancesByDate = {};
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const date = data.date;
+
+    if (!attendancesByDate[date]) {
+      attendancesByDate[date] = {
+        entrada: null,
+        salida: null,
+        wasLate: false,
+        leftEarly: false
+      };
+    }
+
+    if (data.type === 'entrada') {
+      attendancesByDate[date].entrada = data.timestamp;
+      if (data.status === 'late') attendancesByDate[date].wasLate = true;
+    } else if (data.type === 'salida') {
+      attendancesByDate[date].salida = data.timestamp;
+      if (data.status === 'early') attendancesByDate[date].leftEarly = true;
+    }
+  });
+
+  // Calculate statistics
+  // ...
+}
+```
+
+### Chart.js Integration
+
+The service formats data specifically for Chart.js consumption:
+
+```javascript statsService.js
+async function getWeeklyAttendanceData(userId, startDate) {
+  // ... data collection
+
+  return {
+    success: true,
+    data: {
+      labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+      datasets: [
+        {
+          label: 'Presente',
+          data: presentData,
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        },
+        {
+          label: 'Tardanza',
+          data: lateData,
+          backgroundColor: 'rgba(255, 206, 86, 0.6)',
+          borderColor: 'rgba(255, 206, 86, 1)',
+          borderWidth: 1
+        },
+        {
+          label: 'Ausente',
+          data: absentData,
+          backgroundColor: 'rgba(255, 99, 132, 0.6)',
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 1
+        }
+      ]
+    }
+  };
+}
+```
+
+## Use Cases
+
+### Dashboard KPIs
+
+Display real-time attendance metrics:
+
+```javascript
+async function updateDashboard() {
+  const today = await statsService.getTodaySummary();
+  
+  if (today.success) {
+    document.getElementById('present-count').textContent = today.data.checkedIn;
+    document.getElementById('absent-count').textContent = today.data.absent;
+    document.getElementById('late-count').textContent = today.data.late;
+  }
+}
+```
+
+### Performance Reviews
+
+Generate employee performance data:
+
+```javascript
+async function generatePerformanceReport(userId) {
+  const stats = await statsService.getEmployeeStats(
+    userId,
+    '2024-01-01',
+    '2024-12-31'
+  );
+  
+  if (stats.success) {
+    return {
+      attendance: stats.data.attendanceRate,
+      punctuality: stats.data.punctualityRate,
+      hoursWorked: stats.data.totalHoursWorked,
+      grade: calculateGrade(stats.data)
+    };
+  }
+}
+```
+
+### Attendance Analytics
+
+Identify trends and patterns:
+
+```javascript
+async function analyzeAttendanceTrends() {
+  const allStats = await statsService.getAllEmployeesStats(
+    '2024-01-01',
+    '2024-03-31'
+  );
+  
+  if (allStats.success) {
+    const avgAttendance = allStats.data.reduce((sum, emp) => 
+      sum + emp.attendanceRate, 0
+    ) / allStats.data.length;
+    
+    const avgPunctuality = allStats.data.reduce((sum, emp) => 
+      sum + emp.punctualityRate, 0
+    ) / allStats.data.length;
+    
+    return { avgAttendance, avgPunctuality };
+  }
+}
+```
+
+## Related Services
+
+- [Attendance Service](/api/attendance-service) - Records attendance data
+- [Schedule Service](/api/schedule-service) - Defines work schedules
+- [Database Schema](/api/database-schema) - Collection structures
+
+## Error Handling
+
+All methods return a consistent response structure:
+
+```typescript
+interface ServiceResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+```
+
+Handle errors appropriately:
+
+```javascript
+const result = await statsService.getEmployeeStats(userId, start, end);
+
+if (!result.success) {
+  console.error('Failed to fetch stats:', result.error);
+  showErrorNotification(result.error);
+  return;
+}
+
+// Use result.data safely
+```
+
+<Note>
+  Stats calculations are performed on-demand and may take longer for large date ranges. Consider caching results for frequently accessed statistics.
+</Note>
